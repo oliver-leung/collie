@@ -1387,6 +1387,54 @@ export interface UpdateStatus {
   urgent?: UpdateUrgent;
 }
 
+export type AutoMode = "off" | "daily" | "available";
+
+export type AutoOutcome = "done" | "rolled-back" | "stuck" | "interrupted" | "aborted" | "no-record";
+
+export type AutoUnavailable =
+  | "peer"
+  | "no_runner"
+  | "packaged"
+  | "unknown_install"
+  | "windows_checkout"
+  | "in_place"
+  | "first_stage"
+  | "dev_build"
+  | "ci"
+  | "mirror"
+  | "unsupervised"
+  | "deposed"
+  | "invalid_mode"
+  | "invalid_time";
+
+export type AutoHold = "paused" | "dismissed" | "prerelease" | "link_change" | "link_unknown";
+
+export interface UpdateAutoView {
+  mode: AutoMode;
+  at: string;
+  zone: string;
+  pinned: { mode: "env" | "config" | null; at: "env" | "config" | null };
+  setting: { mode: AutoMode; at: string; changedAt: number | null };
+  unavailable?: AutoUnavailable;
+  target: string | null;
+  hold?: AutoHold;
+  nextAt: number | null;
+  windowEndsAt: number | null;
+  waiting?: { code: string; at: number; version: string | null; error?: string; detail?: Record<string, string | number> };
+  last?: {
+    runId: string;
+    version: string;
+    from: string;
+    to: string;
+    mode: "daily" | "available";
+    outcome: AutoOutcome | null;
+    startedAt: number;
+    settledAt: number | null;
+    reason?: string;
+  };
+  paused: string[];
+}
+
 /** GET /api/pane/:id — recent terminal output for one agent (ANSI/SGR, rendered colored). */
 export interface PaneReadResponse {
   paneId: string;

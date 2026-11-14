@@ -6,7 +6,7 @@ import type { UpdateStatus } from "./types.ts";
 import type { PeerHealth } from "./crew/registry.ts";
 import { apiError, type ApiErrorBody, type ApiErrorDetail, type ErrorCode } from "./error-codes.ts";
 import { compareSemver, runnerSetenvArgs } from "./update.ts";
-import { inFlight, type UpdateRun, type UpdateRunState } from "./update-run.ts";
+import { inFlight, type RunTrigger, type UpdateRun, type UpdateRunState } from "./update-run.ts";
 import { developmentBase } from "./version.ts";
 import { isRequestId } from "./worktree-receipts.ts";
 
@@ -786,6 +786,7 @@ export interface UpdateStartState {
   readonly run: UpdateRun | null;
   /** Whether the updater's lock is held by a live process. */
   readonly lockHeld: boolean;
+  readonly starting?: boolean;
   /** The freshly-run preflight, or null when it could not be run at all. */
   readonly preflight: PreflightReport | null;
   /**
@@ -824,13 +825,58 @@ export interface UpdateStartState {
   readonly crewRunOpen?: boolean;
 }
 
+export interface UpdateStartCrew {
+  updateRows(): readonly CrewUpdateRow[];
+  updatePeers(): readonly { readonly name: string; readonly state: string }[];
+  updateRunOpen(): boolean;
+}
+
+/**
+ * @returns The state {@link updateStartVerdict} decides from: `current`, `latest`, `majorAvailable`
+ *   and `installKind` from `status`, `run` as `status.run ?? null`, the given `lockHeld`, `starting`,
+ *   `preflight` and `build`, and `crew`'s banked rows, legs and open run, which are `[]`, `[]` and
+ *   `false` when `crew` is null or undefined.
+ */
+export function updateStartStateOf(a: {
+  readonly status: UpdateStatus;
+  readonly lockHeld: boolean;
+  readonly starting: boolean;
+  readonly preflight: PreflightReport | null;
+  readonly build: string;
+  readonly crew: UpdateStartCrew | null | undefined;
+}): UpdateStartState {
+  return {
+    current: a.status.current,
+    latest: a.status.latest,
+    majorAvailable: a.status.majorAvailable,
+    run: a.status.run ?? null,
+    lockHeld: a.lockHeld,
+    starting: a.starting,
+    preflight: a.preflight,
+    // The one gate a green preflight cannot express: a package manager owns this folder, so there is
+    // nothing here Collie may replace (ADR 0035).
+    installKind: a.status.installKind,
+    // The build this process answers the crew with, not `package.json`'s plain `current`: a
+    // development build can never hand a member the turn, so the crew's start is refused.
+    build: a.build,
+    // One confirm covers the crew (M16/03): the members' banked verdicts gate this start the
+    // same way the lead's own does. Read, never fetched — the sweep is the only thing that
+    // talks to a member.
+    crew: a.crew?.updateRows() ?? [],
+    // And the legs of the last run, which is what "Retry crew update" is about (M16/04).
+    peers: a.crew?.updatePeers() ?? [],
+    // A crew run still open refuses a second confirm (A5).
+    crewRunOpen: a.crew?.updateRunOpen() ?? false,
+  };
+}
+
 /**
  * Whether this request starts an update, and if not, exactly why not.
  *
  * The order is the order the refusals matter in, and it is not arbitrary:
  *
- *  1. **No confirm, no update.** One tap plus one confirm is the whole contract; a body without the
- *     confirm is a client bug or a forged request, and either way nothing should move.
+ *  1. **No confirm, no update.** A body without the confirm is a client bug or a forged request,
+ *     and either way nothing should move.
  *  2. **A run is already going.** This is what makes a double tap idempotent (spec 04's lock): the
  *     second POST is a refusal that NAMES the run, never a second updater.
  *  3. **The preflight.** Re-run by the server on every start, whatever the client believed — the
@@ -849,6 +895,7 @@ export function updateStartVerdict(req: UpdateStartRequest, state: UpdateStartSt
   if (running || state.lockHeld) {
     return refuse(409, "update.in_progress", { state: state.run?.state ?? "staging" });
   }
+  if (state.starting === true) return refuse(409, "update.in_progress", { state: "starting" });
   // One confirm at a time for the CREW too (A5). The same code and sentence an older phone already
   // renders: "An update is already running (levelling the crew). Nothing was started." The run is
   // bounded (`CREW_RUN_TTL_MS`), so this refusal is too.
@@ -1288,6 +1335,7 @@ export function updateStartCommand(a: {
   readonly downgrade?: boolean;
   /** `--line <line>`: the line this one run resolves on, the lead's for a crew member (ADR 0110). */
   readonly line?: "stable" | "edge" | null;
+  readonly trigger?: RunTrigger | null;
 }): UpdateStartPlan {
   const verb = a.rollback === true ? ["update", "--rollback"] : a.major ? ["update", "--major"] : ["update"];
   const pinned = a.rollback !== true && a.toTag !== undefined && a.toTag !== null;
@@ -1295,6 +1343,7 @@ export function updateStartCommand(a: {
   if (pinned && a.downgrade === true) verb.push("--downgrade");
   if (a.rollback !== true && a.line !== undefined && a.line !== null) verb.push("--line", a.line);
   if (a.runId !== undefined && a.runId !== null) verb.push("--run-id", a.runId);
+  if (a.rollback !== true && a.trigger === "auto") verb.push("--trigger", "auto");
   if (a.platform === "linux" && a.hasSystemdRun) {
     const setenv = runnerSetenvArgs({ env: a.env ?? {}, mirror: a.mirror ?? null });
     const plan: UpdateStartPlan = {
@@ -1313,7 +1362,50 @@ export function updateStartCommand(a: {
  */
 export type UpdateStartResult =
   | { readonly ok: true }
-  | { readonly ok: false; readonly reason: string; readonly refusal?: "update.manager_unreachable" };
+  | { readonly ok: false; readonly reason: string; readonly refusal?: "update.manager_unreachable" | "update.in_progress" };
+
+export const START_LATCH_MS = 120_000;
+
+export class UpdateStartLatch {
+  private held: { readonly runId: string; readonly at: number } | null = null;
+
+  /**
+   * Claim the latch for `runId` at `now`. A held claim is cleared first when it is spent: at least
+   * {@link START_LATCH_MS} old, or named by `run.runId`.
+   *
+   * @returns false while another claim is still held; otherwise true, with `runId` holding it.
+   */
+  claim(runId: string, now: number, run: UpdateRun | null): boolean {
+    this.clearSpent(now, run);
+    if (this.held !== null) return false;
+    this.held = { runId, at: now };
+    return true;
+  }
+
+  /** Clear the claim when `runId` holds it; otherwise nothing. */
+  release(runId: string): void {
+    if (this.held !== null && this.held.runId === runId) this.held = null;
+  }
+
+  /**
+   * @returns Whether a claim is held at `now`, after a spent one is cleared as {@link claim} clears
+   *   it.
+   */
+  heldNow(now: number, run: UpdateRun | null): boolean {
+    this.clearSpent(now, run);
+    return this.held !== null;
+  }
+
+  private clearSpent(now: number, run: UpdateRun | null): void {
+    if (this.held === null) return;
+    if (now - this.held.at >= START_LATCH_MS || run?.runId === this.held.runId) this.held = null;
+  }
+}
+
+/** @returns The answer to a start refused while the latch is held: `update.in_progress`, state `starting`. */
+export function startLatchRefusal(): UpdateStartResult {
+  return { ok: false, reason: apiError("update.in_progress", { state: "starting" }).error, refusal: "update.in_progress" };
+}
 
 /**
  * Whether the bridge must refuse to start the update, before anything is spawned or written.

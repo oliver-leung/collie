@@ -1592,13 +1592,15 @@ git_q clone -q "$ORIGIN" "$CLONE"
 git_q -C "$ORIGIN" commit -q --allow-empty -m "third"
 CLONE_BRANCH_AT="$(git -C "$CLONE" rev-parse HEAD)"
 health_says 9.10.0
-upd "$CLONE" "$BIN" update || fail "\`collie update\` failed on a linked clone: ${STDERR}"
+upd "$CLONE" "$BIN" update --run-id auto-run-1 --trigger auto || fail "\`collie update\` failed on a linked clone: ${STDERR}"
 assert_contains "$STDOUT" "staged checkout"
 # The verb STAGES and hands off (M15/04): the swap, the restart and the health gate all run in a
 # process with its own lifetime, because the restart would otherwise kill the bridge that asked.
 assert_contains "$STDOUT" "handed off to systemd-run --user --collect"
 assert_contains "$STDOUT" "Watch it with: collie update --status"
 wait_for_run done
+assert_contains "$(cat "${U_STATE}/update.json")" '"trigger": "auto"'
+assert_contains "$(cat "${U_STATE}/update.json")" '"runId": "auto-run-1"'
 # The fake current binary only runs when the detached real updater restarts through the flipped
 # `current`; its record therefore proves this boundary's Git isolation reached that child.
 [ -f "$U_DETACHED_ENV" ] || fail "the detached updater did not receive the fixture Git environment"
@@ -1636,6 +1638,7 @@ assert_contains "$STDOUT" "nothing to roll back to yet"
 # report, so the terminal and the phone can never tell two different stories about one run.
 upd "$CLONE" "$BIN" update --status || fail "\`collie update --status\` failed: ${STDERR}"
 assert_contains "$STDOUT" "✓ updated to v9.10.0"
+assert_contains "$STDOUT" "started automatically"
 if upd "$CLONE" "$BIN" update --rollback; then fail "--rollback found a target on a first staged update"; fi
 assert_contains "$STDERR" "nothing to roll back to"
 

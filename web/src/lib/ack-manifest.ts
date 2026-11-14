@@ -312,6 +312,10 @@ export const ACK_MANIFEST = {
     channel: "inline",
     why: "The answer is the line this machine is on now, and what that means for it (an Edge build ahead of Stable, a Stable offer above): a standing fact the Release line card states beside the two buttons, and a refusal the operator reads there too (components/release-line-card.tsx).",
   },
+  setAutoUpdate: {
+    channel: "inline",
+    why: "The answer is the setting this machine holds now and when it next looks, a standing fact the Automatic updates card states under its controls, and a refusal (a pin, an install that cannot update itself) the operator reads there too (components/auto-update-card.tsx).",
+  },
   startGoBack: {
     channel: "inline",
     why: "Like startRollback: the answer is the run itself, followed in update mode, or a refusal (no Stable to go back to, a run already going) read on the confirm screen that asked (M60 spec 01).",

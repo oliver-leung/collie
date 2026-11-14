@@ -1160,6 +1160,60 @@ export interface TelemetryReceipt extends TelemetryView {
   replay?: true;
 }
 
+export type AutoMode = "off" | "daily" | "available";
+
+export type AutoOutcome = "done" | "rolled-back" | "stuck" | "interrupted" | "aborted" | "no-record";
+
+export type AutoUnavailable =
+  | "peer"
+  | "no_runner"
+  | "packaged"
+  | "unknown_install"
+  | "windows_checkout"
+  | "in_place"
+  | "first_stage"
+  | "dev_build"
+  | "ci"
+  | "mirror"
+  | "unsupervised"
+  | "deposed"
+  | "invalid_mode"
+  | "invalid_time";
+
+export type AutoHold = "paused" | "dismissed" | "prerelease" | "link_change" | "link_unknown";
+
+export interface UpdateAutoView {
+  mode: AutoMode;
+  at: string;
+  zone: string;
+  pinned: { mode: "env" | "config" | null; at: "env" | "config" | null };
+  setting: { mode: AutoMode; at: string; changedAt: number | null };
+  unavailable?: AutoUnavailable;
+  target: string | null;
+  hold?: AutoHold;
+  nextAt: number | null;
+  windowEndsAt: number | null;
+  waiting?: { code: string; at: number; version: string | null; error?: string; detail?: Record<string, string | number> };
+  last?: {
+    runId: string;
+    version: string;
+    from: string;
+    to: string;
+    mode: "daily" | "available";
+    outcome: AutoOutcome | null;
+    startedAt: number;
+    settledAt: number | null;
+    reason?: string;
+  };
+  paused: string[];
+}
+
+export interface UpdateAutoReceipt extends UpdateAutoView {
+  ok: true;
+  requestId: string;
+  replay?: true;
+}
+
 /** The answer of `POST /api/update/back`: the same shape as a rollback's start. */
 export type GoBackStartResponse = RollbackStartResponse;
 
@@ -1215,6 +1269,7 @@ export interface UpdateRun {
    * bridge older than the field.
    */
   action?: "rollback" | "switch";
+  trigger?: "auto";
   /**
    * The peer legs of a crew-wide run (M16/04). Absent on a solo run, and absent on a bridge that
    * predates it — the page then falls back to the census rows, which is the same screen with older

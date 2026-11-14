@@ -1065,6 +1065,7 @@ describe("solo zero-tax — routes", () => {
       // and it registers no crew sibling: a peer is levelled from the lead's terminal
       // (`collie crew update`), never over the link (ADR 0016).
       "/api/update",
+      "/api/update/auto",
       // "Go back now" from Edge to Stable (M60 spec 01) — solo, no crew sibling, for the rollback
       // route's reason.
       "/api/update/back",
@@ -1477,6 +1478,7 @@ const STATE_DIR_ENTRIES = [
   // Collie tricks (M94, bridge/tricks/paths.ts): `switches.json` and one state folder per trick that ran.
   // Written only by `collie trick on`/`off` and by a trick's run, so an install with no tricks has none.
   "tricks",
+  "update-auto.json",
   // The detached updater's own stdout and stderr (#283), with the run before it kept beside it as
   // `update-runner.log.1`. Absent until the first update started from the phone: the bridge opens it
   // only to hand the descriptor to the runner it spawns.

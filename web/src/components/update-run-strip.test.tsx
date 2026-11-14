@@ -6,14 +6,13 @@ import { StripHost } from "@/components/ui/strip-host";
 import { updateScreenView, type UpdateScreenInput } from "@/lib/update-screen";
 import type { UpdateScreen as UpdateScreenState } from "@/hooks/use-update-screen";
 import type { UpdateRun, UpdateRunState } from "@/lib/types";
-import { UpdateRunStrip } from "./update-run-strip";
+import { stripLine, UpdateRunStrip } from "./update-run-strip";
 
 // THE STRIP, IN THE BAND (2026-09-20, and update mode, ADR 0064).
 //
 // It was a `fixed inset-x-0 bottom-0` bar mounted beside the sheet until 2026-09-20, and on a pane
 // screen that is exactly where the composer's input row sits. It lives in the band above the header.
-// Since update mode it says "Update running, started on another device. <step>." on a device that
-// did not start the run, and "Update running. <step>." on the one that took "Use the app anyway".
+// Since update mode it says "Update running. <step>." on the one that took "Use the app anyway".
 //
 // The reading is pinned in `lib/update-screen.test.ts` and the panel in `update-screen.test.tsx`.
 // This file is about the strip alone: when it registers a slot, what the line says, and that "View"
@@ -112,6 +111,19 @@ describe("the one line it says", () => {
   it("on the device that took the way out: no 'another device'", () => {
     mount({ startedHere: true, released: true, run: run("staging") });
     expect(strip()).toHaveTextContent("Update running. Building 1.9.0 on bluefin.");
+  });
+
+  it("for a run the bridge started on its own: automatic, and the step", () => {
+    mount({ startedHere: false, run: run("staging", { trigger: "auto" }) });
+    expect(strip()).toHaveTextContent("Automatic update running. Building 1.9.0 on bluefin.");
+    expect(strip()).not.toHaveTextContent("another device");
+  });
+
+  it("the device that started the run still says its own line, whatever the record's trigger", () => {
+    const view = updateScreenView({ ...BASE, startedHere: true, released: true, run: run("staging", { trigger: "auto" }) });
+    expect(stripLine({ view: { ...view, mine: true, auto: true } })).toBe("Update running. Building 1.9.0 on bluefin.");
+    expect(stripLine({ view: { ...view, mine: false, auto: true } })).toBe("Automatic update running. Building 1.9.0 on bluefin.");
+    expect(stripLine({ view: { ...view, mine: false, auto: false } })).toBe("Update running, started on another device. Building 1.9.0 on bluefin.");
   });
 });
 

@@ -4,7 +4,7 @@ import { cpus, freemem, homedir, hostname, loadavg, totalmem } from "node:os";
 import { dirname, join } from "node:path";
 
 import { liveHookTargets } from "../cli/beacon.ts";
-import { classifyInstall, probeInstall } from "../cli/install-kind.ts";
+import { classifyInstall, probeInstall, underVersions } from "../cli/install-kind.ts";
 import { realLinkFs } from "../cli/link.ts";
 import { viewHelpWithRules, viewRulesIdOf } from "../cli/trick-view-help.ts";
 import { packageCommand } from "../cli/package-command.ts";
@@ -255,7 +255,7 @@ import {
   updateDigestBody,
 } from "./update.ts";
 import { SWEEP_INTERVAL_MS, sweepUploads } from "./uploads.ts";
-import { crewTurnStart, readUpdateRun, updateLockHeld } from "./update-run.ts";
+import { crewTurnStart, readUpdateRun, type RunTrigger, updateLockHeld } from "./update-run.ts";
 import {
   afterRollback,
   diskWriter,
@@ -280,11 +280,14 @@ import {
   peerRunWire,
   PreflightCache,
   preflightCommand,
+  startLatchRefusal,
   updateCadenceTick,
   updateLaunchRefusal,
   updateStartCommand,
+  UpdateStartLatch,
   type UpdateStartResult,
 } from "./update-action.ts";
+import { AutoUpdater, autoEligibility, autoPinsOf, readAutoRecordSync, writeAutoRecord } from "./update-auto.ts";
 import { apiError } from "./error-codes.ts";
 import {
   insideOwnUnit,
@@ -1127,6 +1130,7 @@ function inodeOrNull(p: string): number | null {
   }
 }
 
+let autoUpdater: AutoUpdater | undefined;
 const updateMonitor = new UpdateMonitor({
   repo: updateRepo,
   current: currentVersion,
@@ -1176,6 +1180,7 @@ const updateMonitor = new UpdateMonitor({
   // The line itself, read per status, so the card and the Crew page name it before any check has
   // succeeded (an offline machine, the rig's dead mirror), the same line the crew header carries.
   line: () => readUpdateLineSync(cfg.stateDir).line,
+  onChecked: () => autoUpdater?.afterCheck(),
   // One push a DAY, naming every release folded into it — the digest decides that; this only renders it.
   notify: (versions, linkChange, urgent) =>
     void push.send({
@@ -1373,6 +1378,8 @@ function bridgeInsideOwnUnit(): boolean {
   return insideOwnUnit(cgroup, `collie${instanceSuffixOf(collieInstance)}`);
 }
 
+const startLatch = new UpdateStartLatch();
+
 /**
  * Start the detached updater. **The one spawner in this process** — the phone's button takes it, and
  * so does a peer following its lead (M16/04), because two spawners would be two answers to "what
@@ -1384,14 +1391,16 @@ function bridgeInsideOwnUnit(): boolean {
  * a binary install checks the release manifest and this platform's `sha256`, and on a checkout
  * fetches `refs/tags/<tag>` explicitly. Nothing here adds a second mechanism.
  */
-const startDetachedUpdate = async (a: {
+async function startDetachedUpdate(a: {
   major: boolean;
   runId: string;
   toTag?: string | null;
   rollback?: boolean;
   downgrade?: boolean;
   line?: ReleaseLine | null;
-}): Promise<UpdateStartResult> => {
+  trigger?: RunTrigger | null;
+}): Promise<UpdateStartResult> {
+  if (!startLatch.claim(a.runId, Date.now(), readUpdateRun(cfg.stateDir))) return startLatchRefusal();
   // One probe, two answers: whether the systemd tier may be taken, and the session variables the
   // `systemd-run` client needs when only the derived default reached the manager.
   const session = await systemdSessionForLaunch();
@@ -1401,6 +1410,7 @@ const startDetachedUpdate = async (a: {
   // rehearsal d-B). Answered before the runner log is opened, so nothing on disk moves.
   const refusal = updateLaunchRefusal({ platform: HOST.platform, hasSystemdRun, supervised: bridgeInsideOwnUnit() });
   if (refusal !== null) {
+    startLatch.release(a.runId);
     console.warn("[update] not started: this bridge runs as its systemd unit and the user manager did not answer");
     return { ok: false, reason: apiError(refusal).error, refusal };
   }
@@ -1416,6 +1426,7 @@ const startDetachedUpdate = async (a: {
     hasSetsid: Bun.which("setsid") !== null,
     runId: a.runId,
     toTag: a.toTag ?? null,
+    trigger: a.trigger ?? null,
     mirror: mirrorValue(process.env),
     env: process.env,
     envAdd: session.envAdd,
@@ -1423,7 +1434,7 @@ const startDetachedUpdate = async (a: {
   // THE RUNNER'S OWN OUTPUT IS KEPT (#283): a runner that dies before it writes a run record used to
   // leave nothing behind at all.
   const log = openRunnerLog(cfg.stateDir, `${new Date().toISOString()} ${plan.command.join(" ")}`);
-  return launchUpdateRunner(plan, {
+  const started = launchUpdateRunner(plan, {
     cwd: rootDir,
     // The plan's env is a LAYER, never a replacement: every other tier and every other variable
     // keep the environment this process has. Only the systemd client ever gets one.
@@ -1434,7 +1445,9 @@ const startDetachedUpdate = async (a: {
       ),
     log,
   });
-};
+  if (!started.ok) startLatch.release(a.runId);
+  return started;
+}
 
 /**
  * An opaque run id. Random, never a timestamp: two confirms inside one millisecond would collide,
@@ -1453,6 +1466,7 @@ const updateAction = canRunUpdate
   ? {
       preflight: (force?: boolean) => preflightCache.get(force),
       lockHeld: () => updateLockHeld(cfg.stateDir),
+      starting: () => startLatch.heldNow(Date.now(), readUpdateRun(cfg.stateDir)),
       newRunId,
       start: startDetachedUpdate,
       // The phone's rollback (M60 spec 01): the same spawn, verb `update --rollback --run-id`.
@@ -3592,6 +3606,45 @@ if (crewLead) {
   });
 }
 
+autoUpdater = new AutoUpdater({
+  now: Date.now,
+  bootAt: Date.now(),
+  store: { read: () => readAutoRecordSync(cfg.stateDir), write: (record) => writeAutoRecord(diskWriter, cfg.stateDir, record) },
+  pins: autoPinsOf(process.env, configLayer),
+  unavailable: autoEligibility({
+    crewMode: crew.mode,
+    canRun: canRunUpdate,
+    installKind,
+    underVersions: underVersions(rootDir, HOST),
+    platform: HOST.platform,
+    build: crewVersion,
+    env: process.env,
+    supervised: HOST.platform === "linux" ? bridgeInsideOwnUnit() : null,
+  }),
+  deposed: () => deposed !== null,
+  crewMode: crew.mode,
+  zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  offer: () => updateMonitor.offer(),
+  status: () => updateMonitor.status(),
+  checkRelease: () => updateMonitor.checkRelease(),
+  run: () => readUpdateRun(cfg.stateDir),
+  action: updateAction,
+  build: crewVersion,
+  crew: crewLead ?? null,
+  lastPollAt: () => push.lastPollAt(),
+  sends: () => sendStore?.list() ?? [],
+  labels: () => readableRegistry()?.devices.map((device) => device.label) ?? null,
+  updatesEnabled: () => notifyPrefs.current().updates,
+  notify: (message) => void push.send(message),
+  announced: (version) =>
+    void updateMonitor.noteAnnounced(version).catch((cause) => console.warn(`[update] could not mark ${version} announced: ${String(cause)}`)),
+  audit: (entry) => audit.record(entry),
+  log: (line) => console.log(`[update] ${line}`),
+  warn: (line) => console.warn(`[update] ${line}`),
+});
+autoUpdater.observe();
+registry.get()?.engine.onTick(() => autoUpdater?.tick());
+
 /**
  * The client the TAKEOVER dials with. A deputy is a peer — it has no `peers` in its own store — so its
  * pins come out of the roster that rode the warrant push (RFC §7.4) plus its own lead, and nowhere
@@ -4143,6 +4196,7 @@ const server = listenOrExit("front door", cfg.host, cfg.port, () => startServer(
   },
   // The anonymous install ping's state and the phone's switch (M86 spec 01).
   telemetry,
+  updateAuto: autoUpdater,
   // The bare `<semver>+<sha>` this process answers `/api/health` and `/crew/v1/hello` with — one
   // string, resolved once, so the detached updater's health gate and a peer can never be told two
   // different things about this machine (M15/04).

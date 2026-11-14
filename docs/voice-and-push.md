@@ -469,7 +469,7 @@ Six kinds, each with its own switch under **Settings → Alerts → Notify when*
 | --- | --- | --- |
 | Needs input | an agent is waiting on you | on |
 | Finished | an agent completes its task | off |
-| App updates | a newer Collie release is available | on |
+| App updates | a newer Collie release is available, or an automatic update finished or failed | on |
 | Machine load stays high | a machine's CPU, memory or fullest disk stays above a rule you set for it | on |
 | Cache about to go cold | a pane's prompt cache expires in about five minutes | off |
 | Decisions that need you now | an agent or a trick posts a Decision marked `now` on the Hill | on |

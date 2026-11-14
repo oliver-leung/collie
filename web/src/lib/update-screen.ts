@@ -184,8 +184,9 @@ export type UpdateScreenEnd =
 
 export interface UpdateScreenView {
   readonly mode: UpdateScreenMode;
-  /** This device started the run on screen. The strip says "started on another device" otherwise. */
+  /** This device started the run on screen. */
   readonly mine: boolean;
+  readonly auto: boolean;
   /** The app behind the panel takes no tap. THE one decision; see this file's header. */
   readonly locked: boolean;
   /** `!locked`, kept by name because every reader since ADR 0044 asks it this way. */
@@ -535,6 +536,7 @@ function noneView(): UpdateScreenView {
   return {
     mode: "hidden",
     mine: false,
+    auto: false,
     locked: false,
     dismissible: true,
     phase: "none",
@@ -763,10 +765,13 @@ function leadView(input: UpdateScreenInput, run: UpdateRun): UpdateScreenView {
   const retryNames =
     phase === "done" ? rows.filter((row) => row.key.startsWith("peer:") && behindRow(row, managed)).map((row) => row.name) : [];
   const words = copyOf({ phase, lead, target, from, rows, phone, managed, reason: run.reason ?? null, rollback });
+  const auto = run.trigger === "auto";
+  const note = auto && phaseFailed(phase) ? t("updateScreen.note.autoSkipped", { version: target ?? unknownVersion() }) : (ask?.note ?? words.note);
 
   return {
     mode,
     mine,
+    auto,
     locked,
     dismissible: !locked,
     phase,
@@ -778,7 +783,7 @@ function leadView(input: UpdateScreenInput, run: UpdateRun): UpdateScreenView {
     elapsedMs: elapsedOf(startedAt, endedAt, input.now),
     heading: words.heading,
     subtitle: words.subtitle,
-    note: ask?.note ?? words.note,
+    note,
     rows,
     ask: ask === null ? null : { name: ask.name },
     recovery: phase === "stuck" ? (run.recovery ?? null) : null,
@@ -1053,6 +1058,7 @@ function crewOnlyView(input: UpdateScreenInput, crew: UpdateScreenCrewRun): Upda
   return {
     mode,
     mine,
+    auto: false,
     locked,
     dismissible: !locked,
     phase,
@@ -1126,6 +1132,7 @@ function provisionalView(input: UpdateScreenInput, claim: UpdateClaim): UpdateSc
     ...noneView(),
     mode: "expanded",
     mine: true,
+    auto: false,
     locked: true,
     dismissible: false,
     phase,
@@ -1203,6 +1210,7 @@ function readyView(input: UpdateScreenInput, ask: UpdateAsk): UpdateScreenView {
     ...noneView(),
     mode: "expanded",
     mine: true,
+    auto: false,
     phase: "ready",
     target: ask.version,
     from: ask.current,

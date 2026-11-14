@@ -236,6 +236,15 @@ const STATES: readonly StepState[] = [
     input: { run: run("restarting", { peers: WAITING }), claim: null, startedHere: false },
     opened: true,
   },
+  { label: "Automatic, the strip", input: { run: run("staging", { trigger: "auto" }), claim: null, startedHere: false } },
+  {
+    label: "Automatic, rolled back",
+    input: {
+      run: run("rolled-back", { trigger: "auto", reason: "the service came back as 1.11.1 after the health check" }),
+      claim: null,
+      startedHere: false,
+    },
+  },
   {
     label: "Try minibuch again",
     input: {

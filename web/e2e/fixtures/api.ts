@@ -281,6 +281,19 @@ async function answer(route: Route, path: string, pins: PinStub): Promise<void> 
       checkedAt: Date.now(),
     });
   }
+  if (path === "/api/update/auto") {
+    return fulfillJson(route, {
+      mode: "off",
+      at: "04:00",
+      zone: "UTC",
+      pinned: { mode: null, at: null },
+      setting: { mode: "off", at: "04:00", changedAt: null },
+      target: null,
+      nextAt: null,
+      windowEndsAt: null,
+      paused: [],
+    });
+  }
 
   return fulfillJson(
     route,

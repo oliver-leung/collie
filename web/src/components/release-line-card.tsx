@@ -3,6 +3,7 @@ import { Icon } from "@/components/icons/icon";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Collapse } from "@/components/ui/collapse";
 import { Segmented } from "@/components/ui/segmented";
 import { useLocale } from "@/hooks/use-locale";
 import { setReleaseLine } from "@/lib/api";
@@ -41,7 +42,7 @@ const EDGE_BUILD = /-edge\.\d+$/;
 /** A version a machine on Stable takes: no prerelease part. */
 const isStable = (version: string): boolean => /^\d+\.\d+\.\d+$/.test(version);
 
-export function ReleaseLineCard() {
+export function ReleaseLineCard({ autoOn }: { readonly autoOn?: boolean }) {
   useLocale();
   const data = useOptionalRootData();
   const { check, run } = useUpdateRun();
@@ -95,6 +96,9 @@ export function ReleaseLineCard() {
         <div className="min-w-0">
           <div className="font-medium">{t("updates.line.title")}</div>
           <p className="text-sm text-muted-foreground">{t("updates.line.description")}</p>
+          <Collapse open={autoOn === true}>
+            <p className="text-sm text-muted-foreground">{t("updates.line.autoNote")}</p>
+          </Collapse>
         </div>
       </div>
 

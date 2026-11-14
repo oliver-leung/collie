@@ -163,10 +163,12 @@ import {
   parseRollbackRequest,
   parseUpdateStartRequest,
   rollbackVerdict,
+  updateStartStateOf,
   updateStartVerdict,
   type PreflightReport,
   type UpdateStartResult,
 } from "./update-action.ts";
+import { parseAutoRequestText, type AutoUpdater } from "./update-auto.ts";
 import { type ReleaseLine, type UpdateLineRecord, withLine } from "./update-line.ts";
 import { parseTelemetryRequest, parseTroubleBody, type Telemetry } from "./telemetry.ts";
 import { REPORT_SCREEN_ROWS, reportDoctorRows, reportScreen, type DoctorRowSource, type ReportContext, type ReportDoctorRow } from "./report.ts";
@@ -1187,7 +1189,7 @@ export function bridgeConfigBody(opts: {
 }
 
 /**
- * What `POST /api/update` needs from the world, as three questions and one act.
+ * What `POST /api/update` needs from the world.
  *
  * Every member is a SEAM index.ts fills, and the shape is what makes the route testable at all: the
  * handler lives inside `Bun.serve`, so the only thing `bun test` can hold is this interface and the
@@ -1198,6 +1200,7 @@ export interface UpdateActionDeps {
   preflight: (force?: boolean) => Promise<PreflightReport | null>;
   /** Whether the updater's lock is held by a process that is still alive (spec 04's lock). */
   lockHeld: () => boolean;
+  starting?: () => boolean;
   /**
    * Start `collie update`, detached from this process. Never awaits the update itself. It may await
    * the LAUNCH decision (the bridge asks the service manager, patiently, before it picks a tier), and
@@ -1244,6 +1247,8 @@ export interface UpdateLineDeps {
  */
 export type TelemetryDeps = Pick<Telemetry, "view" | "choose" | "trouble">;
 
+export type UpdateAutoDeps = Pick<AutoUpdater, "view" | "choose" | "forget">;
+
 export function startServer(opts: {
   cfg: Config;
   registry: SessionRegistry;
@@ -1266,6 +1271,7 @@ export function startServer(opts: {
   updateLine?: UpdateLineDeps;
   /** The anonymous install ping (M86 spec 01). See {@link TelemetryDeps}. */
   telemetry?: TelemetryDeps;
+  updateAuto?: UpdateAutoDeps;
   /** The doctor's send rows for Report a problem (M71 spec 05). See {@link ReportMachine.sendHealth}. */
   sendHealth?: () => readonly DoctorRowSource[];
   /**
@@ -1775,10 +1781,11 @@ export function startServer(opts: {
   const revokeWatch = createRevokeWatch();
   // Seeded now, so a `collie devices revoke` before the first launcher call is still seen.
   revokeWatch(pairedLabels());
-  const forgetDevice = async (label: string, reason: string): Promise<void> => {
+  async function forgetDevice(label: string, reason: string): Promise<void> {
+    opts.updateAuto?.forget(label, reason);
     await forgetDeviceRows(addedLaunchers, label, "local", audit, reason);
     if (crewLead !== undefined) void forgetOnMembers(label);
-  };
+  }
   /**
    * What follows a revoke, whoever made it: one `device.revoke` audit line, the rows the device added go
    * (here and on the crew), and the watch learns the label is gone, so it does not report it again. The
@@ -4178,34 +4185,13 @@ export function startServer(opts: {
         // the actual gate, so it asks the machine now rather than trusting a minute-old answer.
         const report = await action.preflight(true);
         const status = updateMonitor.status();
-        const verdict = updateStartVerdict(parsed, {
-          current: status.current,
-          latest: status.latest,
-          majorAvailable: status.majorAvailable,
-          run: status.run ?? null,
-          lockHeld: action.lockHeld(),
-          preflight: report,
-          // The one gate a green preflight cannot express: a package manager owns this folder, so there is
-          // nothing here Collie may replace (ADR 0035).
-          installKind: status.installKind,
-          // The build this process answers the crew with, not `package.json`'s plain `current`: a
-          // development build can never hand a member the turn, so the crew's start is refused.
-          build: opts.version,
-          // One confirm covers the crew (M16/03): the members' banked verdicts gate this start the
-          // same way the lead's own does. Read, never fetched — the sweep is the only thing that
-          // talks to a member.
-          crew: opts.crewLead?.updateRows() ?? [],
-          // And the legs of the last run, which is what "Retry crew update" is about (M16/04).
-          peers: opts.crewLead?.updatePeers() ?? [],
-          // A crew run still open refuses a second confirm (A5).
-          crewRunOpen: opts.crewLead?.updateRunOpen() ?? false,
-        });
+        const verdict = updateStartVerdict(parsed, updateStartStateOf({ status, lockHeld: action.lockHeld(), starting: action.starting?.() ?? false, preflight: report, build: opts.version, crew: opts.crewLead }));
         if (verdict.kind === "refuse") {
           return jsonError(verdict.body, verdict.status, req.headers.get("accept-encoding"));
         }
-        // ONE id per confirm, minted here and nowhere else. It is what the peers' turns carry and
-        // what a member that rolled back keys its "not twice" memory on — so a fresh confirm, and
-        // only a fresh confirm, permits one further attempt at the same tag.
+        // ONE id per confirm. It is what the peers' turns carry and what a member that rolled back
+        // keys its "not twice" memory on — so a fresh confirm, and only a fresh confirm, permits one
+        // further attempt at the same tag.
         const runId = action.newRunId();
         // ── A PEERS-ONLY RUN MOVES NOTHING HERE ────────────────────────────
         // The lead is already current. It starts no updater, spawns nothing and restarts nothing:
@@ -4389,9 +4375,8 @@ export function startServer(opts: {
       if (pathname === "/api/update/line" && (req.method === "GET" || req.method === "POST")) {
         // ── THE RELEASE LINE: STABLE OR EDGE (M60 spec 01, ADR 0110) ────────
         // One setting per machine. The GET is a read like the update card's own; the POST is a
-        // write, and it installs NOTHING: it changes what the next check offers, and the install is
-        // the ordinary update sheet. The receipt is the record as written, with the request id, and
-        // the same id again answers it unchanged.
+        // write, and it installs NOTHING: it changes what the next check offers. The receipt is the
+        // record as written, with the request id, and the same id again answers it unchanged.
         const lineStore = opts.updateLine;
         if (!lineStore) return text("release line unavailable", 503);
         if (req.method === "GET") {
@@ -4443,6 +4428,43 @@ export function startServer(opts: {
           requestId: parsed.requestId,
         };
         if (replay) receipt.replay = true;
+        return json(receipt, req.headers.get("accept-encoding"));
+      }
+
+      if (pathname === "/api/update/auto" && (req.method === "GET" || req.method === "POST")) {
+        const auto = opts.updateAuto;
+        if (!auto) return text("automatic updates unavailable", 503);
+        if (req.method === "GET") {
+          const denied = guard(req, cfg, "read", pairingGate);
+          if (denied) return denied;
+          return json(auto.view(), req.headers.get("accept-encoding"));
+        }
+        const denied = browserGate("write");
+        if (denied) return denied;
+        let bodyText: string;
+        try {
+          bodyText = await req.text();
+        } catch {
+          return jsonError(apiError("update.auto_invalid"), 400, req.headers.get("accept-encoding"));
+        }
+        const parsed = parseAutoRequestText(bodyText);
+        if (parsed === null || parsed.mode === null || parsed.atInvalid) {
+          return jsonError(apiError("update.auto_invalid"), 400, req.headers.get("accept-encoding"));
+        }
+        if (parsed.requestId === null) {
+          return jsonError(apiError("update.request_id_required"), 400, req.headers.get("accept-encoding"));
+        }
+        const result = auto.choose({ mode: parsed.mode, at: parsed.at, requestId: parsed.requestId, by: pairedLabel(req, pairingGate) });
+        if (result.kind === "refused") return jsonError(result.body, result.status, req.headers.get("accept-encoding"));
+        if (!result.replay) {
+          audit.record({
+            action: "update.auto",
+            device: whois(req).device,
+            detail: { from: result.before, to: result.view.setting.mode, at: result.view.setting.at, requestId: parsed.requestId },
+          });
+        }
+        const receipt: JsonObject = { ok: true, ...result.view, requestId: parsed.requestId };
+        if (result.replay) receipt.replay = true;
         return json(receipt, req.headers.get("accept-encoding"));
       }
 
@@ -9531,13 +9553,15 @@ export interface UpdateNotStartedAnswer {
 /**
  * The answer to an update start (`/api/update`, `/rollback`, `/back`) that did not start. A refusal the
  * launcher decided on carries its own code: `update.manager_unreachable` is a 503, the manager is the
- * service that is not available, and nothing was started or written. Anything else is the spawn
- * itself failing, `update.start_failed` with its reason, as before.
+ * service that is not available, and nothing was started or written. `update.in_progress` is a 409
+ * with the detail `{ state: "starting" }`. Anything else is the spawn itself failing,
+ * `update.start_failed` with its reason, as before.
  */
 export function updateNotStarted(started: {
   readonly reason: string;
-  readonly refusal?: "update.manager_unreachable";
+  readonly refusal?: "update.manager_unreachable" | "update.in_progress";
 }): UpdateNotStartedAnswer {
+  if (started.refusal === "update.in_progress") return { status: 409, body: apiError("update.in_progress", { state: "starting" }) };
   if (started.refusal !== undefined) return { status: 503, body: apiError(started.refusal) };
   return { status: 500, body: apiError("update.start_failed", { reason: started.reason }) };
 }

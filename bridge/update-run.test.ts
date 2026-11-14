@@ -207,3 +207,20 @@ describe("a rollback run (M60 spec 01)", () => {
     expect(parseUpdateRun(JSON.stringify({ ...record(), action: "switch" }))?.action).toBe("switch");
   });
 });
+
+describe("an automatic run", () => {
+  test("keeps trigger auto, and any other trigger value reads as no such key", () => {
+    expect(parseUpdateRun(JSON.stringify(record({ trigger: "auto" })))?.trigger).toBe("auto");
+    for (const trigger of ["cron", 7, null]) {
+      expect("trigger" in (parseUpdateRun(JSON.stringify({ ...record(), trigger })) ?? {})).toBe(false);
+    }
+    expect("trigger" in (parseUpdateRun(JSON.stringify(record())) ?? {})).toBe(false);
+  });
+
+  test("a done automatic run with a run id starts no crew turn; the same run without the trigger does", () => {
+    const done = record({ state: "done", to: "1.1.0", runId: "r-1", updatedAt: NOW });
+    expect(crewTurnStart({ ...done, trigger: "auto" })).toBeNull();
+    expect(crewTurnStart({ ...done, trigger: "auto", action: "rollback" })).toBeNull();
+    expect(crewTurnStart(done)).toEqual({ runId: "r-1", to: "1.1.0", at: NOW, down: false });
+  });
+});

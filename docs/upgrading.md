@@ -149,7 +149,8 @@ next 09:00 after it. One urgent release makes the whole waiting train daily, and
 an ordinary patch. An install that predates this feature keeps the weekly window for an urgent
 patch until it has updated once. The card always shows the
 current state regardless of the window. The `updates` notification preference, under Settings →
-notifications ([Web Push](voice-and-push.md#web-push-optional)), is the single off switch.
+notifications ([Web Push](voice-and-push.md#web-push-optional)), is the single off switch. With
+[automatic updates](#automatic-updates) on, a second push says how the update went.
 
 On a crew lead, the button shows **Update crew to `<version>`**, and one confirmation applies to
 every machine. The lead updates first, under its own health gate. Each peer then levels itself to
@@ -205,6 +206,88 @@ reloads the app.
 > **Note.** "Still downloading, keep using the app" is about the app on your phone and never about the
 > machine. The machines have finished; only the new app has not arrived yet. The app you are holding
 > keeps working, and it switches over on its own the moment the download lands.
+
+### Automatic updates
+
+A machine can take routine releases on its own. It is off until you turn it on.
+
+1. Open **Settings → Updates → Automatic updates**.
+2. Pick **Daily** and a time, or **On release**.
+
+| Setting | When the machine updates |
+| --- | --- |
+| **Off** | Never on its own. This is the default. |
+| **Daily** | Once a day, in the three hours from the time you pick, on the machine's own clock. |
+| **On release** | After the check that finds a new release. The bridge checks every six hours. |
+
+Revoking the device that last changed this setting turns automatic updates off.
+
+An automatic update is the update a tap starts: the same fresh preflight, the same health check and
+the same one rollback. It takes the newest release of your major on your release line, so a new
+major waits for your **Cross to `<version>`** tap, and an urgent release still waits for its slot.
+
+It waits while Collie is in use: a paired device that had Collie open in the last 15 minutes, or a
+message being typed into a pane. It also waits 15 minutes after the bridge starts. A daily window
+that the machine slept through, or that Collie was in use for, is skipped, and the next one is
+tomorrow.
+
+A start that the checks refuse is tried again after one, two and four hours, then every six. In
+daily mode the tries stay inside the window. A new release starts the count again.
+
+> **Note.** A release an automatic update did not finish is never taken automatically again, and
+> neither is one you rolled back from with **Roll back** or dismissed from the band. A newer release
+> is taken as usual, and your own tap still installs any of them.
+
+A final release you installed with a tap and then took back with `collie update --rollback` in a
+terminal is installed again on schedule, because the terminal records no run. Dismiss it from the
+band to stop that.
+
+While it runs, every device keeps its app and shows one line, `Automatic update running. <step>.`
+A run that rolls back, gets stuck or is interrupted opens the sheet on every device with its reason,
+and you can close it.
+
+One push tells you how it went: the machine updated itself, or the update did not finish. It never
+comes before 09:00 on the machine's clock, and the **App updates** switch under
+**Settings → Alerts** turns it off. The "update available" push keeps its own schedule, and the
+result replaces it on the phone.
+
+**What stays a tap.** Automatic updates move this machine only. On a crew lead, the members wait for
+**Retry crew update**, and a release that changes the crew link waits for you.
+
+Automatic updates are not available on these machines, and the card names the reason:
+
+| Machine | Why not |
+| --- | --- |
+| A crew member | It follows its lead. **Retry crew update** on the lead updates it. |
+| A packaged install | Your package manager updates it. |
+| A Herdr-managed checkout | It updates in place, with no way back. Update it with `herdr plugin action invoke update --plugin herdr.collie`. |
+| A linked clone before its first staged update | That update has no way back. Take it with **Update to `<version>`**. |
+| A source checkout on Windows | It never updates itself. The release zip does ([On Windows](#on-windows)). |
+| A development build | It updates from its checkout. |
+| An install Collie cannot identify, such as mise | Collie cannot tell how to update it. |
+| A Linux machine where Collie is not its own systemd unit | Nothing would restart Collie after a failed update. |
+
+On macOS and Windows, a machine with no LaunchAgent or Task Scheduler task keeps the setting, but
+each try stops at the preflight's service check, and the card says why.
+
+**Set it on the machine.** The environment or `config.toml` wins over the phone and locks the card:
+
+```toml
+[update]
+auto_update = "daily"      # off, daily or available; another word reads as off
+auto_update_at = "04:00"   # quoted, 24 hours, on this machine's clock
+```
+
+Run `collie restart` after a change. In the environment they are `COLLIE_AUTO_UPDATE` and
+`COLLIE_AUTO_UPDATE_AT`; for a service, put them in that instance's `.env`
+([Configure → Automatic updates](configure.md#automatic-updates)).
+
+If two Collie instances on one host share one install, turn automatic updates on in one of them
+only ([Multiple Collie instances on one host](deployment.md#multiple-collie-instances-on-one-host)).
+
+> **Caution.** A machine that updates while nobody watches can also break while nobody watches. If
+> a run ends `stuck`, Collie can stay down until you run the recovery command that
+> `collie update --status` prints on that machine. Its push comes once Collie runs again.
 
 ### From the terminal
 
@@ -651,7 +734,8 @@ Each machine is on one of two release lines. The default is **Stable**.
 
 Set the line on the phone: **Settings → Updates → Release line**. The switch installs nothing. It
 saves the line and shows a receipt. The Updates card then offers what the new line offers, through
-the normal update screen.
+the normal update screen. With [automatic updates](#automatic-updates) on, the machine takes that
+offer on its own.
 
 - On Edge, the offer is the newest build above the one you run, Edge builds and final releases
   together, in the same major. A final release replaces its own Edge builds on both lines.

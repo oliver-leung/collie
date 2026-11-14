@@ -21,6 +21,7 @@ import {
   probeInstall,
   publishedBinary,
   publishedRoot,
+  underVersions,
   updateRepoOf,
 } from "./install-kind.ts";
 import { context } from "./fakes.ts";
@@ -297,6 +298,25 @@ describe("binaryLayout reads the path rules of the host it is given", () => {
   test("a POSIX pin does not split a Windows path", () => {
     expect(binaryLayout("/inst/versions/1.0.0", hostFor("linux")).installRoot).toBe("/inst");
     expect(binaryLayout("C:\\inst\\versions\\1.0.0", hostFor("linux")).version).toBe("C:\\inst\\versions\\1.0.0");
+  });
+});
+
+describe("underVersions: a root that sits at <install-root>/versions/<name>", () => {
+  test("on a POSIX host", () => {
+    const linux = hostFor("linux");
+    expect(underVersions("/inst/versions/1.0.0", linux)).toBe(true);
+    expect(underVersions("/home/pat/collie/versions/v9.10.0", linux)).toBe(true);
+    expect(underVersions("/home/pat/collie", linux)).toBe(false);
+    expect(underVersions("/inst/versions", linux)).toBe(false);
+    expect(underVersions("/inst/old-versions/1.0.0", linux)).toBe(false);
+    expect(underVersions("C:\\inst\\versions\\1.0.0", linux)).toBe(false);
+  });
+
+  test("on a win32 host", () => {
+    const win = hostFor("win32");
+    expect(underVersions("C:\\Users\\x\\collie\\versions\\1.0.0", win)).toBe(true);
+    expect(underVersions("C:/Users/x/collie/versions/1.0.0", win)).toBe(true);
+    expect(underVersions("C:\\src\\collie", win)).toBe(false);
   });
 });
 

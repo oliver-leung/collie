@@ -96,6 +96,7 @@ const KNOWN_NAMES: ReadonlySet<string> = new Set([
   "standby-devices.json",
   "standby-launchers.json",
   "stt.json",
+  "update-auto.json",
   "update-runner.log",
   "update-state.json",
   "update.json",

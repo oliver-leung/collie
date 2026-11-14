@@ -650,6 +650,13 @@ export class Push {
     this.polls.set(device, this.clock.now());
   }
 
+  /** @returns The newest {@link notePoll} time over every device, or null when no device has polled. */
+  lastPollAt(): number | null {
+    let newest: number | null = null;
+    for (const at of this.polls.values()) if (newest === null || at > newest) newest = at;
+    return newest;
+  }
+
   /**
    * A paired device's own page read the pane whose notification sits in `tag`, as the pane view's
    * poll does. That page closes its own notification for the pane on such a read

@@ -1305,6 +1305,19 @@ export const handlers = [
   http.get("/api/telemetry", () =>
     HttpResponse.json({ on: false, decidedBy: "ci", setting: null, next: null }),
   ),
+  http.get("/api/update/auto", () =>
+    HttpResponse.json({
+      mode: "off",
+      at: "04:00",
+      zone: "UTC",
+      pinned: { mode: null, at: null },
+      setting: { mode: "off", at: "04:00", changedAt: null },
+      target: null,
+      nextAt: null,
+      windowEndsAt: null,
+      paused: [],
+    }),
+  ),
   // The trouble tally (M86 spec 05): the bridge answers 204 whether or not it counted. A trouble card
   // in any test posts here once, so the default world takes it quietly.
   http.post("/api/telemetry/trouble", () => new HttpResponse(null, { status: 204 })),

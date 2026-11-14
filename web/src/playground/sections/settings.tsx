@@ -3,6 +3,7 @@
 
 import { useEffect, useLayoutEffect, useState } from "react";
 
+import { AutoUpdateCardView } from "@/components/auto-update-card";
 import { LauncherHowSheet } from "@/components/launcher-how-sheet";
 import { CommandPicker } from "@/components/new-command-picker";
 import { FolderBrowse } from "@/components/new-space-browse";
@@ -15,7 +16,8 @@ import { CodexConsentSheet, SpeechCards, type SpeechCardsProps } from "@/compone
 import { DEFAULT_THEME_ID, type Theme } from "@/lib/theme/schema";
 import { addImported, removeImported, shippedThemes } from "@/lib/theme/store";
 import { commandChoice, commandKey, commandOptions, offerFor, pickOfKey } from "@/lib/new-page";
-import type { LauncherItem, RecentRun, SttCapability, SttHostStatus, WhistleStatus } from "@/lib/types";
+import { autoCardView } from "@/lib/auto-update";
+import type { LauncherItem, RecentRun, SttCapability, SttHostStatus, UpdateAutoView, WhistleStatus } from "@/lib/types";
 import {
   devicesPaired,
   devicesUnpaired,
@@ -283,6 +285,44 @@ function ThemePickerDemo() {
     return () => removeImported("playground-warm");
   }, []);
   return <ThemePickerControl />;
+}
+
+const AUTO_NOW = Date.now();
+const AUTO_HOUR = 60 * 60 * 1000;
+
+function autoFixture(over: Partial<UpdateAutoView>): UpdateAutoView {
+  return {
+    mode: "daily",
+    at: "04:00",
+    zone: "Europe/Berlin",
+    pinned: { mode: null, at: null },
+    setting: { mode: "daily", at: "04:00", changedAt: AUTO_NOW - 24 * AUTO_HOUR },
+    target: null,
+    nextAt: AUTO_NOW + 14 * AUTO_HOUR,
+    windowEndsAt: AUTO_NOW + 17 * AUTO_HOUR,
+    paused: [],
+    ...over,
+  };
+}
+
+function ignoreChoice(): void {}
+
+function AutoUpdateDemo({ fixture, saving = false }: { fixture: UpdateAutoView; saving?: boolean }) {
+  const card = autoCardView({
+    load: { kind: "ready", view: fixture },
+    receipt: null,
+    update: undefined,
+    saving,
+    error: null,
+    canWrite: true,
+    moving: false,
+    now: AUTO_NOW,
+  });
+  return (
+    <div className="w-[390px] max-w-full bg-background p-4">
+      <AutoUpdateCardView card={card} saving={saving} members={[]} onMode={ignoreChoice} onTime={ignoreChoice} />
+    </div>
+  );
 }
 
 export function SettingsSection() {
@@ -774,6 +814,55 @@ export function SettingsSection() {
           <PhoneFrameCard height={760}>
             <SettingsRouter home={homeCrew} devices={devicesPaired} start="/settings/updates" />
           </PhoneFrameCard>
+        </Card>
+      </Group>
+
+      <Group title="Automatic updates">
+        <Card state="auto-update-off" label="1: off" reach="Settings, Updates, Automatic updates on a machine that never turned it on.">
+          <AutoUpdateDemo fixture={autoFixture({ mode: "off", setting: { mode: "off", at: "04:00", changedAt: null }, nextAt: null, windowEndsAt: null })} />
+        </Card>
+        <Card state="auto-update-daily" label="2: daily, up to date" reach="pick Daily on a machine that runs the newest release of its line.">
+          <AutoUpdateDemo
+            fixture={autoFixture({
+              last: { runId: "auto-1", version: "1.29.1", from: "1.29.0", to: "1.29.1", mode: "daily", outcome: "done", startedAt: AUTO_NOW - 10 * AUTO_HOUR, settledAt: AUTO_NOW - 10 * AUTO_HOUR + 90_000 },
+            })}
+          />
+        </Card>
+        <Card state="auto-update-waiting" label="3: daily, a release waits" reach="a release came out after today's window closed.">
+          <AutoUpdateDemo fixture={autoFixture({ target: "1.30.0" })} />
+        </Card>
+        <Card state="auto-update-busy" label="4: on release, in use" reach="pick On release while a phone has this machine open.">
+          <AutoUpdateDemo
+            fixture={autoFixture({
+              mode: "available",
+              setting: { mode: "available", at: "04:00", changedAt: AUTO_NOW - 24 * AUTO_HOUR },
+              target: "1.30.0",
+              nextAt: null,
+              windowEndsAt: null,
+              waiting: { code: "busy_reading", at: AUTO_NOW - 60_000, version: "1.30.0" },
+            })}
+          />
+        </Card>
+        <Card state="auto-update-pinned" label="5: set by config.toml" reach="set [update] auto_update in config.toml and run collie restart.">
+          <AutoUpdateDemo fixture={autoFixture({ pinned: { mode: "config", at: "config" }, setting: { mode: "off", at: "04:00", changedAt: null } })} />
+        </Card>
+        <Card state="auto-update-first-stage" label="6: before the first stage" reach="a linked clone that has not staged an update yet.">
+          <AutoUpdateDemo
+            fixture={autoFixture({ mode: "off", setting: { mode: "off", at: "04:00", changedAt: null }, unavailable: "first_stage", nextAt: null, windowEndsAt: null })}
+          />
+        </Card>
+        <Card state="auto-update-paused" label="7: paused after a rollback" reach="an automatic update rolled back, and no newer release is out.">
+          <AutoUpdateDemo
+            fixture={autoFixture({
+              target: "1.30.0",
+              hold: "paused",
+              paused: ["1.30.0"],
+              last: { runId: "auto-2", version: "1.30.0", from: "1.29.1", to: "1.30.0", mode: "daily", outcome: "rolled-back", startedAt: AUTO_NOW - 9 * AUTO_HOUR, settledAt: AUTO_NOW - 9 * AUTO_HOUR + 120_000 },
+            })}
+          />
+        </Card>
+        <Card state="auto-update-saving" label="8: saving" reach="tap a mode or a time: the line says Saving until the machine answers.">
+          <AutoUpdateDemo fixture={autoFixture({})} saving />
         </Card>
       </Group>
 

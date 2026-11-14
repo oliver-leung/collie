@@ -351,6 +351,9 @@ export const ERROR_CODES = {
   "update.back_unavailable": "there is no Stable release to go back to from this build",
   /** A release line switch whose body named no line (M60 spec 01). */
   "update.line_invalid": "the release line must be stable or edge; nothing was changed",
+  "update.auto_invalid": "automatic updates take off, daily or available, and a time as HH:MM; nothing was changed",
+  "update.auto_pinned": "{source} on this machine sets automatic updates; nothing was changed",
+  "update.auto_unavailable": "automatic updates are not available on this machine: {reason}; nothing was changed",
 
   // ── A durable program's history: POST /api/durable/conversation/:id/reopen (M53 spec 11) ───
   /** The program would not show the conversation again (unknown, refused, or it takes no reopen). */

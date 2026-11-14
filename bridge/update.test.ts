@@ -1897,3 +1897,98 @@ describe("UpdateMonitor on a release line (M60 spec 01)", () => {
     expect(shouldNotify({ ...base, edge: true, now: early })).toEqual({ send: false });
   });
 });
+
+describe("UpdateMonitor — the seams automatic updates read", () => {
+  it("onChecked fires after every successful check, with the updates pref off too, and never after a failed fetch", async () => {
+    const seen: (string | null)[] = [];
+    const rig = makeMonitor({ fetchTags: async () => apiTags("v0.12.0"), onChecked: () => seen.push(rig.monitor.offer().latest) });
+    await rig.monitor.checkRelease();
+    expect(seen).toEqual(["0.12.0"]);
+    await rig.monitor.checkRelease();
+    expect(seen).toEqual(["0.12.0", "0.12.0"]);
+
+    let quiet = 0;
+    const off = makeMonitor({
+      updatesEnabled: () => false,
+      onChecked: () => {
+        quiet += 1;
+      },
+    });
+    await off.monitor.checkRelease();
+    expect(quiet).toBe(1);
+    expect(off.notified).toEqual([]);
+
+    let failed = 0;
+    const down = makeMonitor({
+      fetchTags: async () => {
+        throw new Error("offline");
+      },
+      onChecked: () => {
+        failed += 1;
+      },
+    });
+    await down.monitor.checkRelease();
+    expect(failed).toBe(0);
+  });
+
+  it("offer() agrees with status(), and names only the offer-scope dismissal", async () => {
+    const { monitor } = makeMonitor({ fetchTags: async () => apiTags("v0.11.0", "v0.12.0") });
+    expect(monitor.offer()).toEqual({
+      current: "0.11.0",
+      latest: null,
+      releaseAvailable: false,
+      linkChange: null,
+      linkKnown: true,
+      dismissed: null,
+      checkedAt: null,
+    });
+    await monitor.checkRelease();
+    const status = monitor.status();
+    expect(monitor.offer()).toMatchObject({
+      current: status.current,
+      latest: status.latest,
+      releaseAvailable: status.releaseAvailable,
+      checkedAt: status.checkedAt,
+      dismissed: status.dismissedVersion,
+    });
+    expect(monitor.offer()).toMatchObject({ latest: "0.12.0", releaseAvailable: true });
+    expect(monitor.offer().checkedAt).not.toBeNull();
+    await monitor.dismiss("0.12.0");
+    expect(monitor.offer().dismissed).toBe("0.12.0");
+    await monitor.dismiss("0.11.5", "crew");
+    expect(monitor.offer().dismissed).toBe("0.12.0");
+  });
+
+  it("linkKnown is false on a lead whose sidecar read failed, true once it was read, and always true on solo", async () => {
+    const failed = makeMonitor({ crewMode: () => "lead", fetchTags: async () => apiTags("v0.12.0"), fetchReleaseReading: async () => null });
+    await failed.monitor.checkRelease();
+    expect(failed.monitor.offer()).toMatchObject({ latest: "0.12.0", linkKnown: false, linkChange: null });
+
+    const read = makeMonitor({
+      crewMode: () => "lead",
+      crewProtocol: 1,
+      fetchTags: async () => apiTags("v0.12.0"),
+      fetchReleaseReading: async (version) => ({ version, crewProtocol: 2 }),
+    });
+    await read.monitor.checkRelease();
+    expect(read.monitor.offer()).toMatchObject({ linkKnown: true, linkChange: { from: 1, to: 2 } });
+
+    const solo = makeMonitor({ crewMode: () => "solo", fetchTags: async () => apiTags("v0.12.0"), fetchReleaseReading: async () => null });
+    await solo.monitor.checkRelease();
+    expect(solo.monitor.offer().linkKnown).toBe(true);
+  });
+
+  it("noteAnnounced moves lastNotified only upward, and the digest then sends nothing for that version", async () => {
+    const { monitor, store, notified, tick } = makeMonitor({ fetchTags: async () => apiTags("v0.12.0") });
+    await monitor.noteAnnounced("0.12.0");
+    expect(store.lastNotified()).toBe("0.12.0");
+    await monitor.noteAnnounced("0.11.5");
+    await monitor.noteAnnounced("0.12.0");
+    expect(store.saved).toEqual(["0.12.0"]);
+    tick(8 * 24 * 60 * 60 * 1000);
+    await monitor.checkRelease();
+    expect(notified).toEqual([]);
+    await monitor.noteAnnounced("0.12.1");
+    expect(store.saved).toEqual(["0.12.0", "0.12.1"]);
+  });
+});

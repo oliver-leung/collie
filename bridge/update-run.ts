@@ -109,7 +109,7 @@ export interface UpdateRun {
   /** How many rollbacks this run has made. `0` on the way forward, `1` after the one rollback. */
   readonly attempt: number;
   /**
-   * The run's own id — **opaque**, minted once when the operator confirms (M16/04). Never a
+   * The run's own id — **opaque**, minted once (M16/04). Never a
    * timestamp and never a version: two confirms inside one millisecond would collide, and an id that
    * reads as a clock claim on the wire is an id somebody will compare.
    *
@@ -146,10 +146,13 @@ export interface UpdateRun {
    * down the same way.
    */
   readonly action?: RunAction;
+  readonly trigger?: RunTrigger;
 }
 
 /** The two runs that go DOWN a version: a rollback, and the person-started switch back to Stable. */
 export type RunAction = "rollback" | "switch";
+
+export type RunTrigger = "auto";
 
 /** The lock file's contents: who holds it and since when. */
 export interface UpdateLock {
@@ -193,6 +196,7 @@ export function parseUpdateRun(text: string | null): UpdateRun | null {
     logTail?: string;
     recovery?: string;
     action?: string;
+    trigger?: string;
   };
   try {
     // SAFETY: `JSON.parse` answers a JSON value, and every field read off it below is either
@@ -232,6 +236,7 @@ export function parseUpdateRun(text: string | null): UpdateRun | null {
   if (doc.recovery !== undefined) run.recovery = doc.recovery;
   // Only the two words this build knows. Anything else reads as no action, which is an update.
   if (doc.action === "rollback" || doc.action === "switch") run.action = doc.action;
+  if (doc.trigger === "auto") run.trigger = "auto";
   return run;
 }
 
@@ -254,6 +259,7 @@ interface DraftRun {
   logTail?: string;
   recovery?: string;
   action?: RunAction;
+  trigger?: RunTrigger;
 }
 
 /** The lock in `text`, or null. Same posture as {@link parseUpdateRun}: half a lock is no lock. */
@@ -347,21 +353,23 @@ export function updateLockHeld(
  * `bridge/index.ts`), on every poll tick, because the queue is in memory and the update restarted
  * the process that held it — this record is the only thing that crossed the restart.
  *
- * A function rather than four conditions inline at the one call site, because the WRITER is in
+ * A function rather than conditions inline at the one call site, because the WRITER is in
  * another tree: `cli/update.ts` decides what a finished run looks like on disk, and the two halves
  * agreeing is the whole of the crew levelling. A test can hold a real written record against this
- * and fail when either side moves; four conditions in `index.ts` could only be read, never run,
+ * and fail when either side moves; conditions in `index.ts` could only be read, never run,
  * because importing that module boots a bridge.
  *
- * All four are load-bearing. `done` because a run still in flight has nothing to level to yet.
+ * All are load-bearing. `done` because a run still in flight has nothing to level to yet.
  * `runId` because the queue is keyed on it, and a run with none was started from a terminal by
  * someone who never asked for a crew. `to` because that is the version the peers are levelling to.
+ * A record with `trigger: "auto"` answers null.
  */
 export function crewTurnStart(
   run: UpdateRun | null,
 ): { readonly runId: string; readonly to: string; readonly at: number; readonly down: boolean } | null {
   if (run === null || run.state !== "done") return null;
   if (run.runId === undefined || run.to === null) return null;
+  if (run.trigger === "auto") return null;
   // `updatedAt` is the moment this machine finished, which is the moment the levelling could have
   // begun. A caller that re-derives the queue after a restart ages the run against it, so a record
   // left behind by a crash days ago cannot start a levelling run today (M20/01).

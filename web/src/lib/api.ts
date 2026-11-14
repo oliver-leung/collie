@@ -98,6 +98,9 @@ import type {
   GoBackStartResponse,
   ReleaseLine,
   ReleaseLineReceipt,
+  AutoMode,
+  UpdateAutoReceipt,
+  UpdateAutoView,
   TelemetryReceipt,
   TelemetrySetting,
   TelemetryView,
@@ -2710,6 +2713,31 @@ export function setReleaseLine(a: { line: ReleaseLine; requestId: string }): Pro
   return req<ReleaseLineReceipt>("/api/update/line", {
     method: "POST",
     body: JSON.stringify({ line: a.line, requestId: a.requestId }),
+  });
+}
+
+/**
+ * Read this machine's automatic update setting, `GET /api/update/auto`.
+ *
+ * @param signal - aborts the read.
+ * @returns the setting, when it next looks, why it waits, and its last automatic run.
+ * @throws ApiError on a refusal: a 404 from a bridge older than the route.
+ */
+export function fetchAutoUpdate(signal?: AbortSignal): Promise<UpdateAutoView> {
+  return req<UpdateAutoView>("/api/update/auto", { signal });
+}
+
+/**
+ * Save this machine's automatic update setting, `POST /api/update/auto`.
+ *
+ * @param a - the mode, the daily time as `HH:MM`, and the request id of the tap.
+ * @returns the receipt: the view the machine now holds, with the request id it answers.
+ * @throws ApiError on a refusal: `update.auto_pinned`, `update.auto_unavailable`, `update.auto_invalid`.
+ */
+export function setAutoUpdate(a: { mode: AutoMode; at: string; requestId: string }): Promise<UpdateAutoReceipt> {
+  return req<UpdateAutoReceipt>("/api/update/auto", {
+    method: "POST",
+    body: JSON.stringify({ mode: a.mode, at: a.at, requestId: a.requestId }),
   });
 }
 

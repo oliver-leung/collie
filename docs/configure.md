@@ -101,7 +101,7 @@ The config file groups every setting under a `[section]`. The environment name o
 | `journal` | where each harness keeps its own session log |
 | `crew` | the budgets a lead gives a member, a peer's own browser, and whether the lead's tricks may read a member's files (`crew_trick_reads`) |
 | `standby` | the deputy's second door: port, bind address, arming |
-| `update` | where releases come from, how many versions stay, a GitHub token for the release check |
+| `update` | where releases come from, how many versions stay, a GitHub token for the release check, automatic updates |
 | `serve` | whether Collie publishes the front door, on what, and under which path (`base_path`) |
 
 The durable agents one Collie runs beside its multiplexer are not in `config.toml`. Each is one entry in
@@ -147,6 +147,18 @@ the bridge's own host and port, or when you list that origin here too.
 
 Without this setting, the UI will load as an empty page. See
 [Troubleshooting](troubleshooting.md#troubleshooting) for details.
+
+### Automatic updates
+
+Two keys in `[update]` set
+[Automatic updates](upgrading.md#automatic-updates) for one machine.
+
+| key | environment | default | what it does |
+| --- | --- | --- | --- |
+| `auto_update` | `COLLIE_AUTO_UPDATE` | unset | `off`, `daily` or `available`. Set here, it wins over the choice in Settings and locks it. Any other value reads as `off`. |
+| `auto_update_at` | `COLLIE_AUTO_UPDATE_AT` | `04:00` | When the daily window opens, quoted as `HH:MM` on this machine's clock. Set here, it locks the time in Settings. Any other value, an unquoted time included, turns automatic updates off. |
+
+For a service, set them in that instance's `.env` or `config.toml`, then run `collie restart`.
 
 ## Your own slash commands
 

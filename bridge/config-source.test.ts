@@ -191,6 +191,64 @@ describe("the file's shape", () => {
     const layer = await read({ [HOME_FILE]: '[access]\naudit_content = "NONE"\n' });
     expect(layer.env.COLLIE_AUDIT_CONTENT).toBe("none");
   });
+
+  test("auto_update takes its words in any case, and passes any other value through as its text to fail closed", async () => {
+    async function env(value: string): Promise<string | undefined> {
+      return (await read({ [HOME_FILE]: `[update]\nauto_update = ${value}\n` })).env.COLLIE_AUTO_UPDATE;
+    }
+    expect(await env('"Daily"')).toBe("daily");
+    expect(await env('" available "')).toBe("available");
+    expect(await env('"never"')).toBe("never");
+    expect(await env('" Never "')).toBe("Never");
+    expect(await env("false")).toBe("false");
+    expect(await env("true")).toBe("true");
+    expect(await env("0")).toBe("0");
+    expect(await env("3")).toBe("3");
+    expect(await env('["daily"]')).toBe('["daily"]');
+    expect(await env("{ mode = \"daily\" }")).toBe('{"mode":"daily"}');
+    expect(await env("04:00:00")).toBe("04:00:00");
+    for (const value of ['"never"', "false", "3", '["daily"]', "04:00:00"]) {
+      const layer = await read({ [HOME_FILE]: `[update]\nauto_update = ${value}\n` });
+      expect(layer.problems).toEqual([]);
+      expect(layer.sources.get("COLLIE_AUTO_UPDATE")).toBe("file:home");
+    }
+    const other = await read({ [HOME_FILE]: '[access]\naudit_content = "verbose"\n' });
+    expect(other.env.COLLIE_AUDIT_CONTENT).toBeUndefined();
+    expect(other.problems.length).toBe(1);
+  });
+
+  test("auto_update_at passes any value through as its text, so a value that is not a quoted time still pins it", async () => {
+    async function env(value: string): Promise<string | undefined> {
+      return (await read({ [HOME_FILE]: `[update]\nauto_update_at = ${value}\n` })).env.COLLIE_AUTO_UPDATE_AT;
+    }
+    expect(await env('"05:30"')).toBe("05:30");
+    expect(await env("04:00:00")).toBe("04:00:00");
+    expect(await env("4")).toBe("4");
+    expect(await env("false")).toBe("false");
+    expect(await env('["04:00"]')).toBe('["04:00"]');
+    expect((await read({ [HOME_FILE]: "[update]\nauto_update_at = 04:00:00\n" })).problems).toEqual([]);
+  });
+
+  test("the instance file's value that is not a string outranks the base file's word", async () => {
+    const layer = await read({
+      [HOME_FILE]: '[update]\nauto_update = "daily"\n',
+      [INSTANCE_FILE]: "[update]\nauto_update = false\n",
+    });
+    expect(layer.env.COLLIE_AUTO_UPDATE).toBe("false");
+    expect(layer.sources.get("COLLIE_AUTO_UPDATE")).toBe("file:instance");
+  });
+
+  test("a string row without words still refuses a value that is not a string", async () => {
+    const layer = await read({ [HOME_FILE]: "[update]\nupdate_repo = 3\n" });
+    expect(layer.env.COLLIE_UPDATE_REPO).toBeUndefined();
+    expect(layer.problems[0]!.message).toContain("must be a string, not a number");
+  });
+
+  test("a bool row without words still refuses a string after the enum learned words", async () => {
+    const layer = await read({ [HOME_FILE]: '[bridge]\ntranscript = "off"\n' });
+    expect(layer.env.COLLIE_TRANSCRIPT).toBeUndefined();
+    expect(layer.problems.length).toBe(1);
+  });
 });
 
 describe("problems", () => {

@@ -26,6 +26,7 @@ import {
   STALE_AFTER_MS,
   inFlight,
   type RunAction,
+  type RunTrigger,
   updateLockPath,
   type UpdateLock,
   type UpdateRun,
@@ -55,6 +56,7 @@ import {
   isManagedCheckout,
   originOf,
   originMatches,
+  underVersions,
   updateRepoOf,
   DEFAULT_UPDATE_REPO,
   PACKAGED_SENTENCE,
@@ -414,6 +416,11 @@ export function wantsToTag(args: readonly string[]): string | null {
  */
 export function wantsRunId(args: readonly string[]): string | null {
   return namedValue(args, "--run-id");
+}
+
+/** `--trigger auto` or `--trigger=auto`: `"auto"`, and null for any other value and when absent. */
+export function wantsTrigger(args: readonly string[]): RunTrigger | null {
+  return namedValue(args, "--trigger") === "auto" ? "auto" : null;
 }
 
 /** `--name value` or `--name=value`, trimmed. `null` for absent and for a blank value alike. */
@@ -2065,6 +2072,7 @@ async function updateBinary(deps: UpdateDeps, args: readonly string[]): Promise<
     from: currentVersionDir(deps, layout),
     to: target.version,
     runId: wantsRunId(args),
+    trigger: wantsTrigger(args),
   });
   progress.note(`fetching ${target.version} for ${platform}`);
 
@@ -2244,6 +2252,7 @@ async function updateBinary(deps: UpdateDeps, args: readonly string[]): Promise<
       switch: installed !== null && compareSemver(target.version, installed) < 0,
     },
     wantsRunId(args),
+    wantsTrigger(args),
   );
   if (handed !== EXIT.OK) return handed;
   closeWithMajor(deps, higher);
@@ -2526,11 +2535,6 @@ export function checkoutLayout(installRoot: string, host: Host = HOST): BinaryLa
     trashDir: at(".trash"),
     version: "",
   };
-}
-
-/** Does `root` sit at `<install-root>/versions/<name>` — i.e. is this install already staged? */
-function underVersions(root: string, host: Host = HOST): boolean {
-  return host.path.basename(host.path.dirname(root)) === "versions";
 }
 
 /** The layout a checkout at `root` updates under, whether it has been migrated yet or not. */
@@ -2867,6 +2871,7 @@ async function updateStagedCheckout(
     from: stagedCurrent(deps, layout)?.dir ?? null,
     to: target.version,
     runId: wantsRunId(args),
+    trigger: wantsTrigger(args),
   });
   progress.note(`fetching ${target.tag}`);
 
@@ -2935,6 +2940,7 @@ async function updateStagedCheckout(
       switch: installed !== null && compareSemver(target.version, installed) < 0,
     },
     wantsRunId(args),
+    wantsTrigger(args),
   );
   if (handed !== EXIT.OK) return handed;
   deps.io.out(
@@ -3172,7 +3178,7 @@ interface StagingProgress {
   note(line: string): void;
 }
 
-function beginStaging(deps: UpdateDeps, a: { from: string | null; to: string; runId: string | null }): StagingProgress {
+function beginStaging(deps: UpdateDeps, a: { from: string | null; to: string; runId: string | null; trigger: RunTrigger | null }): StagingProgress {
   const now = deps.now();
   // THE LOCK IS READ FIRST. `handOff` refuses a second update, but it refuses at the END of staging,
   // and this record is written at the start of it — so without this a terminal `collie update` run
@@ -3195,7 +3201,7 @@ function beginStaging(deps: UpdateDeps, a: { from: string | null; to: string; ru
       deps.files,
       deps.ctx.stateDir,
       reduce(
-        reduce(idleRun(now), { kind: "begin", from: a.from, to: a.to, pid: deps.pid, runId: a.runId }, now),
+        reduce(idleRun(now), { kind: "begin", from: a.from, to: a.to, pid: deps.pid, runId: a.runId, trigger: a.trigger }, now),
         { kind: "stage" },
         now,
       ),
@@ -3269,6 +3275,7 @@ function handOff(
   layout: BinaryLayout,
   a: Omit<ApplyArgs, "handoff">,
   runId: string | null = null,
+  trigger: RunTrigger | null = null,
 ): number {
   const verdict = updateLockVerdict(deps);
   if (!verdict.ok) {
@@ -3281,7 +3288,7 @@ function handOff(
   takeLock(deps.files, deps.ctx.stateDir, deps.pid, now);
   // The run id rides the RECORD, not the runner's argv: `runApply` picks the staging record up off
   // disk and keeps driving it, so the id reaches every later state without `--to` growing a sibling.
-  const plain: RunEvent = { kind: "begin", from: a.from, to: a.to, pid: deps.pid, runId };
+  const plain: RunEvent = { kind: "begin", from: a.from, to: a.to, pid: deps.pid, runId, trigger };
   const action = runActionOf(a);
   const begin: RunEvent = action === undefined ? plain : { ...plain, action };
   const staging = reduce(reduce(idleRun(now), begin, now), { kind: "stage" }, now);
@@ -3393,6 +3400,7 @@ export function cmdUpdateStatus(deps: UpdateDeps, args: readonly string[]): numb
             : `${run.state} — ${run.from ?? "?"} → ${target}`;
   deps.io.out(heading);
   deps.io.out(`  started ${new Date(run.startedAt).toISOString()}, last moved ${new Date(run.updatedAt).toISOString()}`);
+  if (run.trigger === "auto") deps.io.out("  started automatically");
   if (run.reason !== undefined) deps.io.out(`  reason: ${run.reason}`);
   if (run.recovery !== undefined) deps.io.out(`  recover with: ${run.recovery}`);
   if (run.logTail !== undefined && run.logTail !== "") {

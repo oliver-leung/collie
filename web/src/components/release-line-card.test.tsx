@@ -58,9 +58,9 @@ function ModeHost() {
   return <UpdateScreen screen={mode} onOpenUpdates={() => {}} onStarted={() => {}} />;
 }
 
-function renderCard(update: UpdateInfo) {
+function renderCard(update: UpdateInfo, autoOn?: boolean) {
   server.use(http.get("/api/update/check", () => HttpResponse.json({ ...update, preflight: null })));
-  const router = createMemoryRouter([{ id: ROOT_ROUTE_ID, path: "/", loader: () => homeData(update), element: <ReleaseLineCard /> }], {
+  const router = createMemoryRouter([{ id: ROOT_ROUTE_ID, path: "/", loader: () => homeData(update), element: <ReleaseLineCard autoOn={autoOn} /> }], {
     initialEntries: ["/"],
   });
   return render(
@@ -194,6 +194,17 @@ describe("Release line: Stable | Edge (M60 spec 01)", () => {
     renderCard(info({ current: "1.23.0-edge.2", line: "edge" }));
     expect(await screen.findByText("This machine is on Edge.")).toBeInTheDocument();
     expect(screen.queryByText(/Edge build 1\.23\.0-edge\.2/)).toBeNull();
+  });
+
+  it("says a switch is taken on its own while automatic updates are on, and not otherwise", async () => {
+    const note = "Automatic updates are on, so this machine takes the newest build of the line you pick.";
+    const on = renderCard(info(), true);
+    await screen.findByText("This machine is on Stable.");
+    expect(screen.getByText(note)).toBeInTheDocument();
+    on.unmount();
+    renderCard(info());
+    await screen.findByText("This machine is on Stable.");
+    expect(screen.queryByText(note)).toBeNull();
   });
 
   it("a packaged machine is told the facts but offered no Go back now", async () => {

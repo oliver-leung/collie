@@ -194,6 +194,19 @@ describe("config init", () => {
     }
   });
 
+  test("auto_update's constraint line says another word reads as off; an enum without words keeps its plain line", () => {
+    const lines = generateConfigFile("/tmp/x.toml").split("\n");
+    const at = lines.indexOf('#auto_update = ""');
+    expect(at).toBeGreaterThan(0);
+    expect(lines.slice(at - 3, at)).toEqual([
+      expect.stringContaining("Let this machine take routine releases on its own"),
+      "# one of: off, daily, available; another word reads as off",
+      "# env: COLLIE_AUTO_UPDATE",
+    ]);
+    expect(lines).toContain('#auto_update_at = "04:00"');
+    expect(lines).toContain("# one of: preview, none");
+  });
+
   test("the generated file says the environment still wins, and names its own path", () => {
     const text = generateConfigFile("/tmp/x.toml");
     expect(text.split("\n")[0]).toBe("# /tmp/x.toml");

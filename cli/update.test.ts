@@ -77,6 +77,7 @@ import {
   wantsMajor,
   wantsRunId,
   wantsToTag,
+  wantsTrigger,
   STATUSLINE_LAG_WORD,
 } from "./update.ts";
 import { STATUSLINE_BEHIND_WORD } from "./hooks.ts";
@@ -3671,6 +3672,46 @@ describe("the update run id", () => {
     expect(wantsRunId(["update", "--run-id", "r-1"])).toBe("r-1");
     expect(wantsRunId(["update", "--run-id=r-1"])).toBe("r-1");
     expect(wantsRunId(["update", "--to-tag", "v1.1.0"])).toBeNull();
+  });
+
+  test("trigger reads auto in both spellings, and any other word or no flag is no trigger", () => {
+    expect(wantsTrigger(["update", "--trigger", "auto"])).toBe("auto");
+    expect(wantsTrigger(["update", "--trigger=auto"])).toBe("auto");
+    expect(wantsTrigger(["update", "--trigger", "cron"])).toBeNull();
+    expect(wantsTrigger(["update", "--trigger=Auto"])).toBeNull();
+    expect(wantsTrigger(["update", "--trigger"])).toBeNull();
+    expect(wantsTrigger(["update", "--run-id", "r-1"])).toBeNull();
+  });
+
+  test("an automatic run's trigger rides the record to done, and that run starts no crew turn", async () => {
+    const h = binaryHarness();
+    expect(await cmdUpdate(h.deps, ["--to-tag", `v${NEW}`, "--run-id", "r-1", "--trigger", "auto"])).toBe(EXIT.OK);
+    const staged = parseUpdateRun(h.files.read(RUN_FILE));
+    expect(staged).toMatchObject({ state: "staging", to: NEW, runId: "r-1", trigger: "auto" });
+    expect(await runner(h, BINARY_APPLY)).toBe(EXIT.OK);
+    const done = parseUpdateRun(h.files.read(RUN_FILE));
+    expect(done).toMatchObject({ state: "done", to: NEW, runId: "r-1", trigger: "auto" });
+    expect(crewTurnStart(done)).toBeNull();
+
+    const tapped = binaryHarness();
+    expect(await cmdUpdate(tapped.deps, ["--to-tag", `v${NEW}`, "--run-id", "r-1"])).toBe(EXIT.OK);
+    expect("trigger" in (parseUpdateRun(tapped.files.read(RUN_FILE)) ?? {})).toBe(false);
+    expect(await runner(tapped, BINARY_APPLY)).toBe(EXIT.OK);
+    expect(crewTurnStart(parseUpdateRun(tapped.files.read(RUN_FILE)))).toMatchObject({ runId: "r-1", to: NEW });
+  });
+
+  test("--status says an automatic run started automatically, and says nothing extra for a tapped one", async () => {
+    const auto = binaryHarness();
+    expect(await cmdUpdate(auto.deps, ["--run-id", "r-1", "--trigger", "auto"])).toBe(EXIT.OK);
+    const before = auto.io.stdout.length;
+    expect(await cmdUpdate(auto.deps, ["--status"])).toBe(EXIT.OK);
+    expect(auto.io.stdout.slice(before)).toContain("  started automatically");
+
+    const tapped = binaryHarness();
+    expect(await cmdUpdate(tapped.deps, ["--run-id", "r-1"])).toBe(EXIT.OK);
+    const from = tapped.io.stdout.length;
+    expect(await cmdUpdate(tapped.deps, ["--status"])).toBe(EXIT.OK);
+    expect(tapped.io.stdout.slice(from).join("\n")).not.toContain("automatically");
   });
 });
 

@@ -148,6 +148,12 @@ describe("names", () => {
     }
   });
 
+  test("the automatic update record and its temporary file are Collie names", () => {
+    expect(isCollieName("update-auto.json")).toBe(true);
+    expect(isCollieName("update-auto.json.tmp")).toBe(true);
+    expect(isCollieName("update-auto.json.old")).toBe(false);
+  });
+
   test("only Collie's own suffixes follow a Collie name: a rotation and its temporary files", () => {
     for (const name of ["audit.log.1", "crew-trust.json.tmp", "collie-processes.4242.tmp", "paired-devices.json.4242.7.tmp", "stt.json.4242.7.tmp", ".env.collie-tmp", ".env.push-keys.tmp"]) {
       expect(isCollieName(name)).toBe(true);

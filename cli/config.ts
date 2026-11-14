@@ -216,6 +216,9 @@ function tomlDefault(setting: ConfigSetting): string {
 
 /** The bounds or allowed values a row has, as the one extra comment line, or `null`. */
 function constraintLine(setting: ConfigSetting): string | null {
+  if (setting.kind === "enum" && setting.words === true) {
+    return `# one of: ${setting.values.join(", ")}; another word reads as ${setting.values[0] ?? ""}`;
+  }
   if (setting.kind === "enum") return `# one of: ${setting.values.join(", ")}`;
   if (setting.kind === "bool" && setting.words === true) return `# true, false, or a word: on, off, yes, no`;
   if (setting.kind === "flags") return `# true, false, "all", or a list of: ${setting.values.join(", ")}`;

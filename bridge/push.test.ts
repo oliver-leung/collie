@@ -753,6 +753,19 @@ describe("Push — silent pushes are cut per device", () => {
 
   const render = (tag: string, badge = 1): PushMessage => ({ title: "claude needs you", body: "demo", tag, badge, renotify: true });
 
+  test("lastPollAt is null before any poll, then the newest poll of any device", async () => {
+    const { push, clock } = await rig([]);
+    expect(push.lastPollAt()).toBeNull();
+    push.notePoll("pixel");
+    const first = clock.now();
+    await clock.advance(5_000);
+    push.notePoll("mac");
+    expect(push.lastPollAt()).toBe(first + 5_000);
+    await clock.advance(5_000);
+    push.notePoll("pixel");
+    expect(push.lastPollAt()).toBe(first + 10_000);
+  });
+
   test("rule 1: a render is held from a device that polled just now, and sent to the one in a pocket", async () => {
     const { push, clock, to } = await rig([
       { endpoint: "phone", device: "pixel" },

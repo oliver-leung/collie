@@ -3926,6 +3926,54 @@ describe("the update write gate — POST api/update rides the pane path's own ga
     });
   });
 
+  test("updateNotStarted: a start the latch refused is a 409 in progress, state starting", () => {
+    expect(updateNotStarted({ reason: "x", refusal: "update.in_progress" })).toEqual({
+      status: 409,
+      body: {
+        code: "update.in_progress",
+        error: "an update is already running (starting); nothing was started",
+        detail: { state: "starting" },
+      },
+    });
+  });
+
+  test("POST api/update builds its verdict state with updateStartStateOf, and still hands off without awaiting the runner", () => {
+    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+    const at = src.indexOf('if (pathname === "/api/update" && req.method === "POST")');
+    const handler = src.slice(at, src.indexOf("\n      }\n", at));
+    expect(handler).toContain("updateStartStateOf({");
+    expect(handler).toContain("starting: action.starting?.() ?? false");
+    expect(handler).toContain("crew: opts.crewLead");
+    expect(handler).toContain("const started = await action.start({ major: verdict.major, runId });");
+  });
+
+  test("api/update/auto: a read-gated GET, a write-gated POST with a request id, a receipt and an audit line, and it starts nothing", () => {
+    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+    const at = src.indexOf('if (pathname === "/api/update/auto" && (req.method === "GET" || req.method === "POST"))');
+    expect(at).toBeGreaterThan(0);
+    const handler = src.slice(at, src.indexOf("\n      }\n", at));
+    expect(handler).toContain('text("automatic updates unavailable", 503)');
+    expect(handler).toContain('guard(req, cfg, "read", pairingGate)');
+    expect(handler).toContain('const denied = browserGate("write");');
+    expect(handler).toContain("parseAutoRequestText(");
+    expect(handler).toContain('apiError("update.auto_invalid")');
+    expect(handler).toContain('apiError("update.request_id_required")');
+    expect(handler).toContain("pairedLabel(req, pairingGate)");
+    expect(handler).toContain('action: "update.auto"');
+    expect(handler).toContain("receipt.replay = true;");
+    expect(handler.indexOf('text("automatic updates unavailable", 503)')).toBeLessThan(handler.indexOf("guard(req"));
+    for (const forbidden of ["action.start", "updateAction", "checkRelease"]) expect(handler).not.toContain(forbidden);
+  });
+
+  test("a revoke turns automatic updates off through the one forget path", () => {
+    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+    const at = src.indexOf("async function forgetDevice(label: string, reason: string): Promise<void> {");
+    expect(at).toBeGreaterThan(0);
+    const fn = src.slice(at, src.indexOf("\n  }\n", at));
+    expect(fn).toContain("opts.updateAuto?.forget(label, reason);");
+    expect(fn.indexOf("opts.updateAuto?.forget(label, reason);")).toBeLessThan(fn.indexOf("forgetDeviceRows("));
+  });
+
   test("api/update/line: a read-gated GET, a write-gated POST with a receipt, and the switch installs nothing (M60 spec 01)", () => {
     const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
     const at = src.indexOf('if (pathname === "/api/update/line" && (req.method === "GET" || req.method === "POST"))');
@@ -4172,7 +4220,8 @@ describe("the update write gate — POST api/update rides the pane path's own ga
     const handler = src.slice(updateAt, src.indexOf("\n      }\n", updateAt));
     // One confirm covers the crew, so one verdict covers the crew — and it is the SAME rows the
     // card showed, from the same bank, decided by the one merge function in `update-action.ts`.
-    expect(handler).toContain("crew: opts.crewLead?.updateRows() ?? []");
+    expect(handler).toContain("updateStartStateOf({");
+    expect(handler).toContain("crew: opts.crewLead");
   });
 
   test("the band's dismiss carries a scope, and the monitor decides what it costs", () => {

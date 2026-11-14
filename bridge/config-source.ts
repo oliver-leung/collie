@@ -566,9 +566,10 @@ function convert(setting: ConfigSetting, raw: TomlValue, home: string): string |
       return raw ? "1" : "0";
     }
     case "enum": {
-      if (typeof raw !== "string") return { why: `must be a string, not ${typeName(raw)}` };
+      if (typeof raw !== "string") return setting.words === true ? textOf(raw) : { why: `must be a string, not ${typeName(raw)}` };
       const allowed = setting.values ?? [];
       const match = allowed.find((a) => a.toLowerCase() === raw.trim().toLowerCase());
+      if (match === undefined && setting.words === true) return raw.trim();
       if (match === undefined) return { why: `must be one of ${allowed.join(", ")}` };
       return match;
     }
@@ -600,10 +601,16 @@ function convert(setting: ConfigSetting, raw: TomlValue, home: string): string |
     }
     case "string":
     case "secret": {
-      if (typeof raw !== "string") return { why: `must be a string, not ${typeName(raw)}` };
+      if (typeof raw !== "string") return setting.words === true ? textOf(raw) : { why: `must be a string, not ${typeName(raw)}` };
       return expandHome(raw, home);
     }
   }
+}
+
+function textOf(raw: TomlValue): string {
+  if (Array.isArray(raw)) return JSON.stringify(raw);
+  const text = String(raw);
+  return text === "[object Object]" ? JSON.stringify(raw) : text;
 }
 
 /** Every setting in file order, grouped by section. Shared by `config init` and `config show`. */

@@ -695,3 +695,52 @@ describe("a rollback walks the same steps in its own words", () => {
     expect(view.heading).toBe(`Switching bluefin back to ${FROM}`);
   });
 });
+
+describe("a run the bridge started on its own", () => {
+  const SKIPPED = `This update started on its own. Automatic updates skip ${TO} until a newer release.`;
+
+  it("is the strip on every device while it runs: no device's, and never locked", () => {
+    const states: UpdateRunState[] = ["preflight", "staging", "restarting", "verifying"];
+    for (const state of states) {
+      for (const view of [other({ run: run(state, { trigger: "auto", peers: WAITING }) }), read({ run: run(state, { trigger: "auto", runId: "auto-1", peers: WAITING }) })]) {
+        expect(view).toMatchObject({ mode: "collapsed", mine: false, locked: false, dismissible: true, auto: true });
+      }
+    }
+  });
+
+  it("a rollback is shown on every device, dismissible, and says that release is skipped", () => {
+    const view = other({ run: run("rolled-back", { trigger: "auto", peers: WAITING, reason: "health gate timed out" }) });
+    expect(view).toMatchObject({ phase: "rolled-back", mode: "expanded", mine: false, locked: false, dismissible: true, auto: true });
+    expect(view.note).toBe(SKIPPED);
+    expect(view.end).toMatchObject({ kind: "failed" });
+  });
+
+  it("a stuck and a stopped automatic run say the same", () => {
+    const states: UpdateRunState[] = ["stuck", "interrupted"];
+    for (const state of states) {
+      const view = other({ run: run(state, { trigger: "auto", reason: "the new binary did not answer" }) });
+      expect(view).toMatchObject({ mode: "expanded", dismissible: true, auto: true });
+      expect(view.note).toBe(SKIPPED);
+    }
+  });
+
+  it("is hidden once done, and one that gave up before anything moved is nothing at all", () => {
+    expect(other({ run: run("done", { trigger: "auto", peers: ARRIVED, settledAt: NOW - 1_000 }) })).toMatchObject({ mode: "hidden", phase: "done", auto: true });
+    expect(other({ run: run("idle", { trigger: "auto", reason: "the release is not published yet" }) })).toMatchObject({ mode: "hidden", phase: "none", auto: false });
+  });
+
+  it("leaves a person's run and every view that is not the lead's record with auto false", () => {
+    const tapped = other({ run: run("rolled-back", { peers: WAITING, reason: "health gate timed out" }) });
+    expect(tapped.auto).toBe(false);
+    expect(tapped.note).toBeNull();
+    const views = [
+      read({ claim: null, startedHere: false }),
+      read({ run: undefined, claim: null, startedHere: false, ask: { kind: "crew", version: TO, major: false, peersOnly: false, current: FROM } }),
+      read({ run: undefined, answered: false }),
+      read({ run: run("done", { trigger: "auto", runId: "earlier", peers: ARRIVED, settledAt: NOW - 60_000 }) }),
+      read({ claim: { ...CLAIM, peersOnly: true }, crewRun: { legs: [leg("minibuch", "updating")], settledAt: null, to: TO, current: TO } }),
+    ];
+    expect(views.map((view) => view.phase)).toEqual(["none", "ready", "check", "check", "members"]);
+    for (const view of views) expect(view.auto).toBe(false);
+  });
+});

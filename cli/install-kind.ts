@@ -264,6 +264,11 @@ export function binaryLayout(root: string, host: Host = HOST): BinaryLayout {
   };
 }
 
+/** Does `root` sit at `<install-root>/versions/<name>` — i.e. is this install already staged? */
+export function underVersions(root: string, host: Host = HOST): boolean {
+  return host.path.basename(host.path.dirname(root)) === "versions";
+}
+
 /**
  * The binary the PATH name must point at for an install rooted at `root`.
  *

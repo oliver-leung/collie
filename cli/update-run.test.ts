@@ -15,13 +15,16 @@ import {
   driveApply,
   healthProbe,
   healthVerdict,
+  idleRun,
   probeConfigOf,
   probeTarget,
+  reduce,
   updateHealthProbe,
   updateHealthTarget,
   type ApplyEffects,
   type ApplyPlan,
   type ProbeConfig,
+  type RunEvent,
 } from "./update-run.ts";
 import { realNet, type Net, type NetCertificate, type NetProbe } from "./sys.ts";
 
@@ -324,6 +327,49 @@ const run = (state: UpdateRun["state"], over: Partial<UpdateRun> = {}): UpdateRu
 });
 
 const wait = { now: () => 0, sleep: () => Promise.resolve(), timeoutMs: 10_000, pollMs: 1_000 };
+
+describe("the trigger an automatic run begins with", () => {
+  const T0 = 1_700_000_000_000;
+  function begin(trigger: "auto" | null): UpdateRun {
+    return reduce(idleRun(T0), { kind: "begin", from: "v1.0.0", to: "v1.1.0", pid: 7, runId: "r-1", trigger }, T0);
+  }
+  const fail: RunEvent = { kind: "fail", reason: "no answer", logTail: "", recovery: "collie update --rollback", rollbackTo: "v1.0.0" };
+
+  test("begin with trigger auto keeps it through stage, restart, verify, pass, the rollback, stuck, abort and interrupt", () => {
+    const staged = reduce(begin("auto"), { kind: "stage" }, T0 + 1);
+    const restarting = reduce(staged, { kind: "restart" }, T0 + 2);
+    const verifying = reduce(restarting, { kind: "verify" }, T0 + 3);
+    const done = reduce(verifying, { kind: "pass" }, T0 + 4);
+    const rollingBack = reduce(verifying, fail, T0 + 4);
+    const rechecked = reduce(rollingBack, { kind: "verify" }, T0 + 5);
+    const rolledBack = reduce(rechecked, { kind: "pass" }, T0 + 6);
+    const stuck = reduce(rechecked, fail, T0 + 6);
+    const aborted = reduce(staged, { kind: "abort", reason: "the build failed" }, T0 + 2);
+    const interrupted = reduce(staged, { kind: "interrupt", reason: "the updater is gone" }, T0 + 2);
+    const runs = [staged, restarting, verifying, done, rollingBack, rechecked, rolledBack, stuck, aborted, interrupted];
+    expect(runs.map((r) => r.state)).toEqual([
+      "staging",
+      "restarting",
+      "verifying",
+      "done",
+      "restarting",
+      "verifying",
+      "rolled-back",
+      "stuck",
+      "idle",
+      "interrupted",
+    ]);
+    for (const r of runs) expect(r.trigger).toBe("auto");
+    expect(runs.every((r) => r.runId === "r-1")).toBe(true);
+  });
+
+  test("begin with no trigger writes no such key, and neither does any transition after it", () => {
+    const begun = begin(null);
+    expect("trigger" in begun).toBe(false);
+    expect("trigger" in reduce(reduce(begun, { kind: "stage" }, T0 + 1), { kind: "abort", reason: "x" }, T0 + 2)).toBe(false);
+    expect(JSON.stringify(begun)).not.toContain("trigger");
+  });
+});
 
 describe("awaitRunRecord", () => {
   test("it polls until the record settles, and reports how it settled", async () => {

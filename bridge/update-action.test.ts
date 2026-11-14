@@ -40,11 +40,18 @@ import {
   type PreflightReport,
   type UpdateStartRequest,
   type UpdateStartState,
+  type UpdateStartVerdict,
+  type UpdateStartCrew,
+  updateStartStateOf,
+  UpdateStartLatch,
+  START_LATCH_MS,
+  startLatchRefusal,
   worstVerdict,
 } from "./update-action.ts";
 import { apiError } from "./error-codes.ts";
 import type { JsonObject, JsonValue } from "./json.ts";
 import type { UpdateRun, UpdateRunState } from "./update-run.ts";
+import type { UpdateStatus } from "./types.ts";
 
 // `POST /api/update`, decided (bridge/update-action.ts). The handler itself lives inside `Bun.serve`
 // and cannot be stood up under `bun test` (CLAUDE.md), so every refusal it can make is decided by
@@ -268,6 +275,24 @@ describe("POST api/update — the update write gate's verdict", () => {
     expect(updateStartVerdict(ask(), state({ run: runAt("done"), crewRunOpen: true }))).toEqual(refused);
     expect(updateStartVerdict(ask({ peersOnly: true }), state({ current: "1.4.0", crewRunOpen: true }))).toEqual(refused);
     expect(updateStartVerdict(ask(), state({ run: runAt("done"), crewRunOpen: false })).kind).toBe("start");
+  });
+
+  test("a start the latch holds is refused as starting, after the run and lock checks and before the crew run", () => {
+    const starting: UpdateStartVerdict = {
+      kind: "refuse",
+      status: 409,
+      body: {
+        error: "an update is already running (starting); nothing was started",
+        code: "update.in_progress",
+        detail: { state: "starting" },
+      },
+    };
+    expect(updateStartVerdict(ask(), state({ starting: true }))).toEqual(starting);
+    expect(updateStartVerdict(ask(), state({ starting: true, crewRunOpen: true }))).toEqual(starting);
+    expect(updateStartVerdict(ask({ peersOnly: true }), state({ current: "1.4.0", starting: true }))).toEqual(starting);
+    expect(updateStartVerdict(ask(), state({ starting: true, run: runAt("staging") }))).toMatchObject({ body: { detail: { state: "staging" } } });
+    expect(updateStartVerdict(ask(), state({ starting: true, lockHeld: true }))).toMatchObject({ body: { detail: { state: "staging" } } });
+    expect(updateStartVerdict(ask(), state({ starting: false })).kind).toBe("start");
   });
 
   test("a finished run does not block the next one", () => {
@@ -993,6 +1018,29 @@ describe("the fresh-preflight request, across the link", () => {
     expect([...src.matchAll(/updateCadenceTick\(/g)]).toHaveLength(1);
   });
 
+  test("the one spawner claims the start latch first, releases it on every refusal, and passes the trigger on (ADR 0141)", () => {
+    const src = readFileSync(join(import.meta.dir, "index.ts"), "utf8");
+    const at = src.indexOf("async function startDetachedUpdate(");
+    expect(at).toBeGreaterThan(0);
+    const fn = src.slice(at, src.indexOf("\n}\n", at));
+    const body = fn.slice(fn.indexOf("): Promise<UpdateStartResult> {\n") + "): Promise<UpdateStartResult> {\n".length);
+    expect(body.startsWith("  if (!startLatch.claim(a.runId, Date.now(), readUpdateRun(cfg.stateDir))) return startLatchRefusal();\n")).toBe(true);
+    const refusal = fn.slice(fn.indexOf("if (refusal !== null) {"), fn.indexOf("return { ok: false, reason: apiError(refusal).error, refusal };"));
+    expect(refusal).toContain("startLatch.release(a.runId);");
+    expect(fn).toContain("trigger: a.trigger ?? null,");
+    expect(fn.endsWith("  if (!started.ok) startLatch.release(a.runId);\n  return started;")).toBe(true);
+    expect(src).toContain("starting: () => startLatch.heldNow(Date.now(), readUpdateRun(cfg.stateDir)),");
+  });
+
+  test("the scheduler rides the monitor's check and the engine's tick, and is the route's seam (ADR 0141)", () => {
+    const src = readFileSync(join(import.meta.dir, "index.ts"), "utf8");
+    expect([...src.matchAll(/onChecked: \(\) => autoUpdater\?\.afterCheck\(\),/g)]).toHaveLength(1);
+    expect([...src.matchAll(/registry\.get\(\)\?\.engine\.onTick\(\(\) => autoUpdater\?\.tick\(\)\);/g)]).toHaveLength(1);
+    expect([...src.matchAll(/updateAuto: autoUpdater,/g)]).toHaveLength(1);
+    expect(src).toContain("  action: updateAction,\n");
+    expect(src).toContain("void updateMonitor.noteAnnounced(version).catch(");
+  });
+
   test("the crew read peeks; it never shells out mid-sweep", async () => {
     let runs = 0;
     let now = 1_000;
@@ -1323,5 +1371,147 @@ describe("POST api/update/back and api/update/line — the two release lines (M6
     expect(parseLineRequest({ line: "edge", requestId: ID })).toEqual({ line: "edge", requestId: ID });
     expect(parseLineRequest({ line: "nightly", requestId: "x" })).toEqual({ line: null, requestId: null });
     expect(parseLineRequest("edge")).toBeNull();
+  });
+});
+
+describe("updateStartStateOf — the one state the tap and the automatic start are judged on", () => {
+  const status: UpdateStatus = {
+    current: "1.3.0",
+    latest: "1.4.0",
+    latestUrl: null,
+    releaseAvailable: true,
+    majorAvailable: "2.0.0",
+    majorUrl: null,
+    installKind: "binary",
+    dismissedVersion: null,
+    dismissedCrewVersion: null,
+    bridgeStale: false,
+    restartNeeded: false,
+    checkedAt: 1_000,
+  };
+  const row: CrewUpdateRow = { name: "attic", version: "1.3.0", verdict: "green", reasons: [], asOf: 1 };
+  function crewOf(rows: readonly CrewUpdateRow[]): UpdateStartCrew {
+    return {
+      updateRows: () => rows,
+      updatePeers: () => [{ name: "attic", state: "rolled-back" }],
+      updateRunOpen: () => true,
+    };
+  }
+
+  test("maps every field, the crew's banked rows into state.crew included", () => {
+    const run = runAt("done");
+    expect(
+      updateStartStateOf({ status: { ...status, run }, lockHeld: true, starting: true, preflight: GREEN, build: "1.3.0+abc1234", crew: crewOf([row]) }),
+    ).toEqual({
+      current: "1.3.0",
+      latest: "1.4.0",
+      majorAvailable: "2.0.0",
+      run,
+      lockHeld: true,
+      starting: true,
+      preflight: GREEN,
+      installKind: "binary",
+      build: "1.3.0+abc1234",
+      crew: [row],
+      peers: [{ name: "attic", state: "rolled-back" }],
+      crewRunOpen: true,
+    });
+  });
+
+  test("no crew is no rows, no legs and no open run, and no record is a null run", () => {
+    for (const crew of [undefined, null]) {
+      expect(updateStartStateOf({ status, lockHeld: false, starting: false, preflight: null, build: "1.3.0", crew })).toMatchObject({
+        run: null,
+        crew: [],
+        peers: [],
+        crewRunOpen: false,
+      });
+    }
+  });
+
+  test("the crew gates the confirm: a red member row read through it refuses the start, naming the machine", () => {
+    const red: CrewUpdateRow = { ...row, verdict: "red", reasons: ["disk is full"] };
+    const crew: UpdateStartCrew = { updateRows: () => [red], updatePeers: () => [], updateRunOpen: () => false };
+    const verdict = updateStartVerdict(ask(), updateStartStateOf({ status, lockHeld: false, starting: false, preflight: GREEN, build: "1.3.0", crew }));
+    expect(verdict).toMatchObject({ kind: "refuse", status: 412, body: { code: "update.preflight_red", detail: { check: "attic" } } });
+    const clear = updateStartVerdict(ask(), updateStartStateOf({ status, lockHeld: false, starting: false, preflight: GREEN, build: "1.3.0", crew: null }));
+    expect(clear).toEqual({ kind: "start", to: "1.4.0", major: false });
+  });
+});
+
+describe("UpdateStartLatch — one start at a time, in this process", () => {
+  const T0 = 1_000_000;
+  function named(runId: string, runState: UpdateRunState = "staging"): UpdateRun {
+    return { ...runAt(runState), runId };
+  }
+
+  test("a claim holds, and a second claim is refused while it does", () => {
+    const latch = new UpdateStartLatch();
+    expect(latch.heldNow(T0, null)).toBe(false);
+    expect(latch.claim("a", T0, null)).toBe(true);
+    expect(latch.heldNow(T0 + 1, null)).toBe(true);
+    expect(latch.claim("b", T0 + 1, null)).toBe(false);
+    expect(latch.claim("b", T0 + 1, named("old"))).toBe(false);
+  });
+
+  test("a claim is spent at 120 s, and the next claim takes the latch", () => {
+    const latch = new UpdateStartLatch();
+    expect(START_LATCH_MS).toBe(120_000);
+    latch.claim("a", T0, null);
+    expect(latch.heldNow(T0 + START_LATCH_MS - 1, null)).toBe(true);
+    expect(latch.heldNow(T0 + START_LATCH_MS, null)).toBe(false);
+    expect(latch.claim("b", T0 + START_LATCH_MS, null)).toBe(true);
+  });
+
+  test("release clears the claim of its own run id only", () => {
+    const latch = new UpdateStartLatch();
+    latch.claim("a", T0, null);
+    latch.release("b");
+    expect(latch.heldNow(T0, null)).toBe(true);
+    latch.release("a");
+    expect(latch.heldNow(T0, null)).toBe(false);
+    expect(latch.claim("b", T0, null)).toBe(true);
+  });
+
+  test("once the record names the claimed run the claim is spent, so it never blocks the next start", () => {
+    const latch = new UpdateStartLatch();
+    latch.claim("a", T0, null);
+    expect(latch.heldNow(T0 + 1_000, named("a"))).toBe(false);
+    latch.claim("c", T0 + 1_000, null);
+    expect(latch.claim("rollback-1", T0 + 2_000, named("c", "idle"))).toBe(true);
+    expect(latch.heldNow(T0 + 2_000, named("c", "idle"))).toBe(true);
+  });
+
+  test("startLatchRefusal is the in-progress refusal with state starting", () => {
+    expect(startLatchRefusal()).toEqual({
+      ok: false,
+      reason: apiError("update.in_progress", { state: "starting" }).error,
+      refusal: "update.in_progress",
+    });
+    expect(startLatchRefusal()).toMatchObject({ reason: "an update is already running (starting); nothing was started" });
+  });
+});
+
+describe("updateStartCommand — an automatic start", () => {
+  const tiers = [
+    { platform: "linux", hasSystemdRun: true, hasSetsid: true },
+    { platform: "linux", hasSystemdRun: false, hasSetsid: true },
+    { platform: "darwin", hasSystemdRun: false, hasSetsid: false },
+  ];
+  const base = { binary: "/opt/collie/bin/collie", stamp: "42", major: false };
+
+  test("is `update --to-tag v<target> --run-id <id> --trigger auto` on every tier", () => {
+    for (const tier of tiers) {
+      const command = updateStartCommand({ ...base, ...tier, runId: "r", toTag: "v1.30.0", trigger: "auto" }).command;
+      expect(command.slice(command.indexOf("update"))).toEqual(["update", "--to-tag", "v1.30.0", "--run-id", "r", "--trigger", "auto"]);
+    }
+  });
+
+  test("never carries --trigger on a rollback, or when no trigger is named", () => {
+    for (const tier of tiers) {
+      expect(updateStartCommand({ ...base, ...tier, runId: "r", rollback: true, trigger: "auto" }).command).not.toContain("--trigger");
+      expect(updateStartCommand({ ...base, ...tier, runId: "r", toTag: "v1.30.0", trigger: null }).command).not.toContain("--trigger");
+      expect(updateStartCommand({ ...base, ...tier, runId: "r", toTag: "v1.30.0" }).command).not.toContain("--trigger");
+    }
   });
 });

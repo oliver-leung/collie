@@ -818,7 +818,12 @@ only), fetched on a write device's tap only, never forwarded, refused past 1 MB 
 passes it, and stored under `<stateDir>/themes` (M59 spec 06; the page itself keeps
 `connect-src 'self'`, ADR 0106). A `durable` peer configured with `COLLIE_DURABLE_URL` makes a fifth, to the program's URL the
 operator set, with the bearer token from `COLLIE_DURABLE_TOKEN`, and it is declined by setting
-nothing ([ADR 0103](./.adr/0103-the-wire-has-two-transports-a-private-socket-or-tls-with-a-token.md)). Speech-to-text (`bridge/stt/`, CLI
+nothing ([ADR 0103](./.adr/0103-the-wire-has-two-transports-a-private-socket-or-tls-with-a-token.md)).
+Automatic updates ([ADR 0141](./.adr/0141-an-automatic-update-is-a-standing-consent-for-one-machine.md))
+add no new kind of call, but with them on for a machine the bridge makes an update's calls without a
+tap: the update check when a daily window opens and the last one is over 30 minutes old, the
+preflight's tag listing before each try, and the `collie update` a tap starts, which downloads the
+release. With them off, the default, nothing changes. Speech-to-text (`bridge/stt/`, CLI
 `cli/stt.ts`) is a registered provider seam, absent until `stt.json` names a provider. Then it may
 hold a provider credential at 0600, open an operator-configured outbound path carrying microphone
 audio, on `codex` spawn a `codex app-server` child, and on `local-cli` spawn the operator's named

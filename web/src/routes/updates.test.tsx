@@ -125,6 +125,33 @@ describe("updates page", () => {
     expect(await screen.findByText("Update Collie")).toBeInTheDocument();
   });
 
+  it("holds four cards in order, and reads the automatic update setting once for two of them", async () => {
+    let reads = 0;
+    server.use(
+      http.get("/api/update/auto", () => {
+        reads += 1;
+        return HttpResponse.json({
+          mode: "daily",
+          at: "04:00",
+          zone: "",
+          pinned: { mode: null, at: null },
+          setting: { mode: "daily", at: "04:00", changedAt: 1 },
+          target: null,
+          nextAt: null,
+          windowEndsAt: null,
+          paused: [],
+        });
+      }),
+    );
+    renderUpdates(info());
+    expect(await screen.findByText("Once a day, from 04:00 on this machine's clock.")).toBeInTheDocument();
+    expect(screen.getByText("Automatic updates are on, so this machine takes the newest build of the line you pick.")).toBeInTheDocument();
+    const page = document.querySelector("main");
+    expect(Array.from(page?.children ?? [], (child) => child.getAttribute("data-slot"))).toEqual(["card", "card", "release-line", "auto-update"]);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(reads).toBe(1);
+  });
+
   it("leads with a 44px back button that returns to Settings, not home", async () => {
     const user = userEvent.setup();
     const router = renderUpdates(info());

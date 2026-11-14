@@ -304,6 +304,11 @@ Key security boundaries and risks:
   shortcut
   ([One-off commands](configure.md#one-off-commands-and-their-history),
   [ADR 0095](../.adr/0095-one-off-commands-and-their-history.md)).
+- **A paired device can turn on automatic updates.** A write device may set this machine to take
+  routine releases on its own. It cannot pick a version, cross a major or update a crew member, and
+  revoking that device turns the setting off. A setting in `config.toml` or the environment is not
+  the phone's to change ([Automatic updates](upgrading.md#automatic-updates),
+  [ADR 0141](../.adr/0141-an-automatic-update-is-a-standing-consent-for-one-machine.md)).
 - **Each machine keeps the shell lines you send through Collie.** Sent keeps a line you send to a
   shell pane, and each one-off command, in `sent.jsonl` in the state folder (mode 0600). A paired
   device can read it, as it can read the panes. Some secrets are still kept
@@ -703,7 +708,8 @@ start of a build that has it. The exact message is written down in the contract 
 
 ### What did not change
 
-Besides the daily ping, the one unprompted outbound call is the update check: an anonymous HTTPS `GET` to GitHub's public
+Besides the daily ping, and automatic updates when you turn them on (below), the one unprompted
+outbound call is the update check: an anonymous HTTPS `GET` to GitHub's public
 tags API (`bridge/update.ts`) that compares your version to the newest tag. It carries no data about
 you or your machine, only the static user-agent `collie-update-check`.
 
@@ -719,6 +725,15 @@ https://api.github.com/repos/<owner>/<repo>
 It reads only when a paired phone lists your tricks, never on a timer. It keeps a good answer for 6 hours
 and a failed one for an hour, in the `tricks` folder of its state folder, and makes at most 20 such reads an
 hour. It follows no redirect, gives up after 5 seconds or 64 KB, and keeps only the two numbers it shows.
+
+Automatic updates, when you turn them on, make an update's calls without a tap. Before each try the
+bridge runs the preflight a tap runs, which lists the release tags. In daily mode it may also run
+the update check when the window opens. They are off by default
+([ADR 0141](../.adr/0141-an-automatic-update-is-a-standing-consent-for-one-machine.md)).
+
+The update itself is the `collie update` a tap starts. A binary install fetches the release manifest
+and this platform's archive from GitHub and checks the archive's sha256. A checkout fetches the
+release tag over anonymous HTTPS. Nothing about you is sent.
 
 The Whistle model download is another outbound call. It happens only when a person taps **Download
 to host** or runs `collie stt whistle`, and it sends no data about you ([The speech engine

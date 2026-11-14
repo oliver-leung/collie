@@ -67,7 +67,7 @@ const DIGEST_PATCH_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const URGENT_READING_CAP = 10;
 // The earliest HOST-LOCAL hour a digest may be pushed. A release published at 03:00 waits for morning;
 // the update banner is already showing it, so nothing is lost by not buzzing a phone at night.
-const DIGEST_EARLIEST_HOUR = 9;
+export const DIGEST_EARLIEST_HOUR = 9;
 
 // ── Pure helpers (unit-tested) ────────────────────────────────────────────────
 
@@ -1297,6 +1297,17 @@ export interface UpdateMonitorDeps {
    * Optional: a monitor without it names the line of the last resolve, as before.
    */
   line?: () => ReleaseLine;
+  onChecked?: () => void;
+}
+
+export interface UpdateOffer {
+  readonly current: string;
+  readonly latest: string | null;
+  readonly releaseAvailable: boolean;
+  readonly linkChange: UpdateLinkChange | null;
+  readonly linkKnown: boolean;
+  readonly dismissed: string | null;
+  readonly checkedAt: number | null;
 }
 
 /** What `GET /api/update/check` carries about what releases changed (1.21.1). */
@@ -1416,6 +1427,7 @@ export class UpdateMonitor {
     // newest URGENT_READING_CAP of them, through the same cache, and all at once so the wait is one
     // timeout rather than ten. It cannot fail the check: every read answers null or a reading.
     this.urgent = await this.urgencyOf(this.newerVersions);
+    this.deps.onChecked?.();
 
     const { current, store } = this.deps;
     // The snapshot above is already updated — suppressing a push must never suppress state.
@@ -1600,6 +1612,13 @@ export class UpdateMonitor {
     await this.deps.store.setLastNotified(this.latest, this.nowIso());
   }
 
+  /** Record `version` as announced to the digest when nothing is, or an older version is; else nothing. */
+  async noteAnnounced(version: string): Promise<void> {
+    const last = this.deps.store.lastNotified();
+    if (last !== null && compareSemver(last, version) >= 0) return;
+    await this.deps.store.setLastNotified(version, this.nowIso());
+  }
+
   /**
    * The band was closed, for `version`, in the scope it was closed in.
    *
@@ -1664,6 +1683,25 @@ export class UpdateMonitor {
     this.exeValue = this.deps.exeReplaced();
     this.exeAt = now;
     return this.exeValue;
+  }
+
+  /**
+   * @returns The routine offer from the last check: `current`, `latest`, `releaseAvailable` and
+   *   `checkedAt` as {@link status} reports them, `linkChange` (null when none), `linkKnown` (true with
+   *   no `latest`, on a solo install, or once the newest release's reading is held) and `dismissed`,
+   *   the version whose offer was closed.
+   */
+  offer(): UpdateOffer {
+    const { current } = this.deps;
+    return {
+      current,
+      latest: this.latest,
+      releaseAvailable: this.latest !== null && compareSemver(this.latest, current) > 0,
+      linkChange: this.linkChange,
+      linkKnown: this.latest === null || this.deps.crewMode() === "solo" || this.readings.has(this.latest),
+      dismissed: this.deps.store.dismissedVersion(),
+      checkedAt: this.checkedAt,
+    };
   }
 
   /** The snapshot-facing status. Cheap: `latest` is cached from the last check, `bridgeStale` throttled. */

@@ -6,6 +6,8 @@
   one reducer and one shared poll stand. What changes is what the reducer says: the end of a run,
   the phone's own step, and where the confirm lives.
 - **Shipped in:** pending
+- **Amended in scope by:** [ADR 0141](./0141-an-automatic-update-is-a-standing-consent-for-one-machine.md):
+  a run the bridge started for itself reads `Automatic update running. <step>.` in the strip.
 - **Trail:** the four drawn options of 2026-09-23 (checklist, machine cards, focus, and "Locked app,
   docked panel", the one chosen) · ADR 0044's own rule "the end is announced by the toast, not by a
   panel the operator has to close" · the card's inline confirm (M20/07) · `lib/pwa.ts`'s reload on

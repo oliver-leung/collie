@@ -1,14 +1,18 @@
 
 import { Icon } from "@/components/icons/icon";
 import { RouteHeader } from "@/components/app-header";
+import { AutoUpdateControl } from "@/components/auto-update-card";
 import { Button } from "@/components/ui/button";
 import { UpdateCard } from "@/components/update-card";
 import { UpdateCheckControl } from "@/components/update-check-control";
 import { ReleaseLineCard } from "@/components/release-line-card";
+import { useAutoUpdate } from "@/hooks/use-auto-update";
 import { useLocale } from "@/hooks/use-locale";
 import { useNav } from "@/hooks/use-nav";
+import { autoIsOn } from "@/lib/auto-update";
 import { t } from "@/lib/i18n";
 import { settingsPath } from "@/lib/nav";
+import { useOptionalRootData } from "@/lib/route-data";
 import { useScope } from "@/lib/session";
 import { BandMain } from "@/components/ui/strip-host";
 
@@ -19,7 +23,7 @@ import { BandMain } from "@/components/ui/strip-host";
 // theme. Updating is a flow now, with a lead, N peers, progress and a rollback state, so it gets a
 // page and Settings keeps one row that links here.
 //
-// ── THREE THINGS, IN THIS ORDER ──────────────────────────────────────────────
+// ── IN THIS ORDER ────────────────────────────────────────────────────────────
 // The check control first: it is what makes the answer below it fresh, so it reads as the question
 // and the card reads as the answer. The card second, and it carries EVERYTHING else — the versions,
 // the preflight, the run progress, the peer lines, and the one action button. Peers are lines
@@ -41,6 +45,7 @@ export function UpdatesRoute() {
   const nav = useNav();
   const scope = useScope();
   useLocale();
+  const auto = useAutoUpdate(useOptionalRootData()?.update);
 
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
@@ -69,7 +74,8 @@ export function UpdatesRoute() {
       <BandMain base={16} className="relative flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto p-4">
         <UpdateCheckControl />
         <UpdateCard />
-        <ReleaseLineCard />
+        <ReleaseLineCard autoOn={autoIsOn(auto.load)} />
+        <AutoUpdateControl load={auto.load} onSaved={auto.saved} />
       </BandMain>
     </div>
   );

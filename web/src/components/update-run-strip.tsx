@@ -11,10 +11,10 @@ import type { UpdateScreen as UpdateScreenState } from "@/hooks/use-update-scree
 // ── A RUN THIS DEVICE IS NOT LOCKED BY IS ONE LINE IN THE BAND ──────────────────────────────────
 //
 // The other half of `components/update-screen.tsx`. That file owns update mode: the locked app and the
-// docked panel, on the device that started the run (ADR 0064). This one owns the strip: "Update
-// running, started on another device. <step>. View" on every other device, and "Update running.
-// <step>." on the device that took "Use the app anyway". A takeover nobody asked for reads as
-// hijacked, so those get a fact they can open, and the app stays theirs.
+// docked panel, on the device that started the run (ADR 0064). This one owns the strip on every
+// other device, and "Update running. <step>." on the device that took "Use the app anyway". A
+// takeover nobody asked for reads as hijacked, so those get a fact they can open, and the app stays
+// theirs.
 //
 // ── IT IS A STRIP, NOT A BAR AT THE BOTTOM (2026-09-20) ─────────────────────
 // It used to be `fixed inset-x-0 bottom-0 z-50`, mounted beside the sheet in `App.tsx`. On a pane
@@ -66,12 +66,14 @@ export function UpdateRunStrip({ screen }: { screen: UpdateScreenState }) {
 /**
  * The strip's one line. On the device that started the run and let go of it: "Update running." and
  * the step. On every other device the same, plus that it was started elsewhere, so a phone that did
- * not tap anything knows why its machines are restarting.
+ * not tap anything knows why its machines are restarting; for a run the bridge started on its own,
+ * "Automatic update running." and the step instead.
  *
  * "Another device", not the device's name: the run record does not say who started it, and a name
  * guessed here would be wrong on the one screen that needs it right.
  */
 export function stripLine(screen: Pick<UpdateScreenState, "view">): string {
   const step = screen.view.heading;
-  return screen.view.mine ? t("updateScreen.strip.mine", { step }) : t("updateScreen.strip.other", { step });
+  if (screen.view.mine) return t("updateScreen.strip.mine", { step });
+  return screen.view.auto ? t("updateScreen.strip.auto", { step }) : t("updateScreen.strip.other", { step });
 }

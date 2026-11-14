@@ -139,6 +139,7 @@ export type ConfigSetting =
       /** One of {@link values}, or `""` when the feature is absent until something configures it. */
       readonly default: string;
       readonly values: readonly string[];
+      readonly words?: true;
     })
   | (ConfigSettingBase & {
       readonly kind: "flags";
@@ -148,7 +149,7 @@ export type ConfigSetting =
       readonly values: readonly string[];
     })
   | (ConfigSettingBase & { readonly kind: "list" | "roots"; readonly default: readonly string[] })
-  | (ConfigSettingBase & { readonly kind: "string" | "secret"; readonly default: string });
+  | (ConfigSettingBase & { readonly kind: "string" | "secret"; readonly default: string; readonly words?: true });
 
 /**
  * Every setting, in file order.
@@ -876,6 +877,25 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     kind: "bool",
     default: true,
     doc: "After each update, install the WalkyTalky skill into every harness on this machine and keep it current. Off only prints a note when it is behind.",
+  },
+  {
+    key: "auto_update",
+    env: "COLLIE_AUTO_UPDATE",
+    section: "update",
+    kind: "enum",
+    values: ["off", "daily", "available"],
+    default: "",
+    words: true,
+    doc: "Let this machine take routine releases on its own (off, daily from auto_update_at, or available after the check that finds one); set here, the phone cannot change it.",
+  },
+  {
+    key: "auto_update_at",
+    env: "COLLIE_AUTO_UPDATE_AT",
+    section: "update",
+    kind: "string",
+    default: "04:00",
+    words: true,
+    doc: "The host-local time, quoted as HH:MM in 24 hours, when the daily automatic update window opens.",
   },
 
   // ── serve ──────────────────────────────────────────────────────────────────
