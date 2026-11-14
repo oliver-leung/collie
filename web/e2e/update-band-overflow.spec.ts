@@ -82,8 +82,8 @@ test("the peer-failed band stays inside a 375px phone, truncated, and the whole 
 
   // 1. THE BAND'S OWN RIGHT EDGE NEVER PASSES THE VIEWPORT'S. This is the assertion a real engine
   // is needed for: jsdom has no boxes to measure. (The overlay's own box legitimately reaches a
-  // few px above/below the visible strip — that is its 44px tap-floor reach, `-inset-y-[5.5px]` in
-  // `ui/notice.tsx` — so only its horizontal edge is the fact this case is about.)
+  // few px below the visible strip — that is its 44px tap-floor reach — so only its horizontal
+  // edge is the fact this case is about.)
   const [bandBox, viewport] = await Promise.all([band.boundingBox(), page.viewportSize()]);
   expect(bandBox).not.toBeNull();
   expect(viewport).not.toBeNull();

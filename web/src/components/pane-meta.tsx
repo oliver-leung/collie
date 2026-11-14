@@ -95,14 +95,10 @@ export function PaneMeta({ host, cache, session, onOpenCache, plainHost, classNa
           // number — the same one difference the two callers already have.
           variant={onOpenCache === undefined ? "row" : "button"}
           onOpen={onOpenCache}
-          // Reached, not drawn: 12px of line plus 2px above and 16px below is 30px. A drawn box would
-          // be nearly three times the line and would set the surrounding row's height on its own.
-          // The reach hangs DOWN, not both ways: the pane name's button ends 4px above this line,
-          // and 16px up put the cache tap over the lower half of the name (1.17.0 review).
           className={cn(
             "text-[11px]/3",
             onOpenCache !== undefined &&
-              "relative before:absolute before:inset-x-0 before:-top-0.5 before:-bottom-4 before:content-['']",
+              "relative before:absolute before:inset-x-0 before:-top-1 before:h-6 before:content-['']",
           )}
         />
       </span>

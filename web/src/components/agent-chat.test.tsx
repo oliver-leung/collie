@@ -432,9 +432,9 @@ describe("AgentChat — the pane header's identity block", () => {
     //
     // TWO CLAIMS, and the second is the one that ends the argument. The meta row states the path
     // line's own 12px in every state — crew, solo, a reading that has not arrived yet — so line 2
-    // never grows and the block stays 20 + 4 + 12 = 36px, under the identity floor's 44px. The row's
-    // `min-h-15` is then what sets the header's height, and nothing on this line can raise it: the
-    // reading's tap target is reached with a `::before`, not drawn.
+    // never grows and the block stays 20 + 4 + 12 = 36px, under the identity floor's 44px. The row
+    // is then what sets the header's height, and nothing on this line can raise it: the reading's
+    // tap target is reached with a `::before`, not drawn.
     const metaHeight = (c: HTMLElement) =>
       /(?:^|\s)(h-3)(?=\s|$)/.exec(
         c.querySelector<HTMLElement>('[data-slot="pane-meta"]')?.className ?? "",
@@ -444,7 +444,7 @@ describe("AgentChat — the pane header's identity block", () => {
     // The row still states one floor and no height of its own, and the meta is the path line's own
     // 12px box, so line 2 measures the same whatever the two chips have to say.
     const row = crew.container.querySelector<HTMLElement>('[data-slot="header-row"]')!;
-    expect(row.className).toMatch(/(?:^|\s)min-h-15(?=\s|$)/);
+    expect(row.className).toMatch(/(?:^|\s)min-h-13(?=\s|$)/);
     expect(row.className).not.toMatch(/(?:^|\s)h-\d/);
     // Nothing in the meta draws a 44px box; the reading's target is reached with a `::before`.
     const meta = crew.container.querySelector<HTMLElement>('[data-slot="pane-meta"]')!;
@@ -487,9 +487,7 @@ describe("AgentChat — the pane header's identity block", () => {
     // THE FLOOR IS ON THE BLOCK AND THE TAP LAYER COVERS IT. The block used to BE the button, and
     // then the cache reading joined line 2 — a control of its own, which inside a button is neither
     // valid markup nor reachable. So the surface became a layer laid over the block, and since 1.17.0
-    // it holds TWO buttons, one per line, splitting it in half. The layer reaches 8px past the block
-    // top and bottom (`-inset-y-2`): that is the row's own padding plus the air around the lines, so
-    // each target is 30px, half the 60px row, and nothing outside the row is covered.
+    // it holds TWO buttons, one per line, splitting it in half.
     const { container } = renderChat();
     const cls = block(container)?.className ?? "";
     expect(cls).toMatch(/(^|\s)min-h-11(?=\s|$)/);
@@ -497,30 +495,41 @@ describe("AgentChat — the pane header's identity block", () => {
     const taps = slot(container, "identity-taps");
     expect(taps?.className).toMatch(/(^|\s)absolute(?=\s|$)/);
     expect(taps?.className).toMatch(/(^|\s)inset-x-0(?=\s|$)/);
-    expect(taps?.className).toMatch(/(^|\s)-inset-y-2(?=\s|$)/);
+    expect(taps?.className).toMatch(/(^|\s)-inset-y-1(?=\s|$)/);
     // Two siblings, equal halves, name first: the top one covers the name line.
     const buttons = Array.from(taps?.querySelectorAll("button") ?? []);
     expect(buttons.map((b) => b.getAttribute("data-slot"))).toEqual(["pane-identity-name", "pane-identity"]);
     for (const b of buttons) expect(b.className).toMatch(/(^|\s)flex-1(?=\s|$)/);
-    // And no vertical padding on top of it: 52px of lines plus a `py-0.5` is 56px in the row's 52px
-    // content box, which grows the row to 64px on the pane route alone — exactly the route-local jump
-    // `min-h-15` was stated to prevent.
     expect(cls).not.toMatch(/(^|\s)(?:p|py)-\d/);
   });
 
-  it("is TWO lines now, and the row still stands on its 60px floor rather than shrinking to them", () => {
+  it("reaches the tap layer past the 44px block by exactly the row's padding, so each target is half the row", () => {
+    const { container } = renderChat();
+    function step(el: Element | null | undefined, re: RegExp): number {
+      const n = re.exec(el?.className ?? "")?.[1];
+      expect(n, `${re} in "${el?.className ?? ""}"`).toBeDefined();
+      return Number(n) * 4;
+    }
+    const row = container.querySelector('header [data-slot="header-row"]');
+    const floor = step(row, /(?:^|\s)min-h-(\d+)(?=\s|$)/);
+    const pad = step(row, /(?:^|\s)py-(\d+)(?=\s|$)/);
+    const blockFloor = step(block(container), /(?:^|\s)min-h-(\d+)(?=\s|$)/);
+    const reach = step(slot(container, "identity-taps"), /(?:^|\s)-inset-y-(\d+)(?=\s|$)/);
+    expect(reach).toBe(pad);
+    expect(blockFloor + 2 * reach).toBe(floor);
+    expect((blockFloor + 2 * reach) / 2).toBe(26);
+  });
+
+  it("is TWO lines now, and the row still stands on its 52px floor rather than shrinking to them", () => {
     // THE COUPLING, and it spans two files. agent-chat.tsx states the line boxes and the gap between
     // them; app-header.tsx states the row's floor and the padding that has to hold them. Each edit
-    // looks complete on its own, and the failure is a header that changes height on ONE route — the
-    // navigation jump `min-h-15` exists to kill. So the arithmetic is read off the rendered elements
-    // rather than trusted.
+    // looks complete on its own, and the failure is a header that changes height on ONE route. So
+    // the arithmetic is read off the rendered elements rather than trusted.
     //
-    // The block lost its caption line, so it is 20 + 4 + 12 = 36px where it was 52px. `min-h-15` is a
-    // FLOOR and not a sum: 36px of lines plus 2×4px of padding is 44px, well under 60, so the row
-    // measures 60px exactly as it did before and on every other route. That is the assertion —
-    // shrinking the header to fit the shorter block would lower a floor shared app-wide, which
-    // DESIGN.md §6 forbids. (Verified in the playground at a true 390px content width: the header
-    // row is 60.00px before and after, the identity button 52 → 44px, the lines box 52 → 36px.)
+    // The block lost its caption line, so it is 20 + 4 + 12 = 36px where it was 52px. That is the
+    // assertion — shrinking the header to fit the shorter block would lower a floor shared app-wide,
+    // which DESIGN.md §6 forbids. (Verified in the playground at a true 390px content width: the
+    // identity button 52 → 44px, the lines box 52 → 36px.)
     const { container } = renderChat({
       agent: { ...fixtureAgents[0]!, cwd: "/home/you/webapp/worktrees/fix-42" },
     });
@@ -543,7 +552,7 @@ describe("AgentChat — the pane header's identity block", () => {
     // put something back in it.
     expect(slot(container, "caption")).toBeNull();
     expect(slot(container, "lines")?.children).toHaveLength(2);
-    expect([name, placeBox, gap, pad, floor]).toEqual([20, 12, 4, 4, 60]);
+    expect([name, placeBox, gap, pad, floor]).toEqual([20, 12, 4, 4, 52]);
     // The lines no longer fill the content box — the FLOOR is what holds the row up, and it must.
     expect(name + gap + placeBox + 2 * pad).toBeLessThan(floor);
     // Which is also why the identity button has to state its own 44px box: 36px of lines would draw
@@ -1489,7 +1498,7 @@ describe("AgentChat \u2014 the pane menu in the header", () => {
     const user = userEvent.setup();
     const { container } = renderChat();
     const before = headerRow(container).className;
-    expect(before).toContain("min-h-15"); // the 60px floor \u2014 app-header.tsx states it once
+    expect(before).toContain("min-h-13"); // the floor \u2014 app-header.tsx states it once
     await openPaneMenu(user);
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
     const row = headerRow(container);
@@ -1694,7 +1703,7 @@ describe("AgentChat \u2014 the pane menu in the header", () => {
   // The takeover happens INSIDE the one hoisted shell (app-header.tsx): the header element itself is
   // mounted above the outlet and is not the route's to replace. Opening and closing find therefore
   // swaps the row's CONTENTS and nothing else — the same <header>, the same prerelease strip, the
-  // same 60px floor. A find bar that mounted a header of its own would pass every assertion in the
+  // same floor. A find bar that mounted a header of its own would pass every assertion in the
   // case above and fail this one.
   it("takes the row over inside the one shell, not by mounting a header of its own", async () => {
     const user = userEvent.setup();
@@ -2536,7 +2545,7 @@ describe("AgentChat — zen mode", () => {
     // here is the case this tree actually is: no band, so the header owns it.
     const header = container.querySelector("header");
     expect(header).not.toBeNull();
-    expect(header?.className).toContain("[padding-top:env(safe-area-inset-top)]");
+    expect(header?.className).toContain("[padding-top:max(env(safe-area-inset-top),var(--top-edge-floor,0px))]");
 
     // Content stays. Zen hides Collie's chrome, never the pane's output — the mirror keeps polling
     // and keeps rendering exactly as it did.
@@ -2579,9 +2588,9 @@ describe("AgentChat — zen mode", () => {
 
   it("hides the chrome THROUGH Collapse, never by tearing it out of the flow", async () => {
     // DESIGN.md §1: an in-flow surface appears and disappears through `ui/collapse.tsx` and through
-    // nothing else, which is also §2's answer to 60px of header vanishing between two frames. The
-    // coupling is asserted rather than commented: read the surface, walk up to its row, require the
-    // row to be a Collapse that is CLOSED. A bare conditional passes every other test in this file.
+    // nothing else. The coupling is asserted rather than commented: read the surface, walk up to its
+    // row, require the row to be a Collapse that is CLOSED. A bare conditional passes every other test
+    // in this file.
     setZenEnabled(true);
     const user = userEvent.setup();
     const { container } = renderChat({ tabs: fixtureTabs });

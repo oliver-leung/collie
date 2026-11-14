@@ -4,7 +4,7 @@ import { useRevalidator } from "react-router";
 import { ORBIT_TURN_MS } from "@/components/collie-home";
 import { useCrew, useHostHealth } from "@/components/crew-provider";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Notice, NOTICE_ACTION, NOTICE_ACTION_TAP } from "@/components/ui/notice";
+import { Notice, NOTICE_STRIP_ACTION, NOTICE_STRIP_ACTION_TAP } from "@/components/ui/notice";
 import { StripSlot } from "@/components/ui/strip-host";
 import { AUTH, DEGRADED, OUTAGE } from "@/lib/strip-priority";
 import { cn } from "@/lib/utils";
@@ -155,7 +155,7 @@ function AuthErrorBanner() {
               className={cn(
                 buttonVariants({ size: "sm" }),
                 "h-6 gap-1 px-2 text-xs no-underline",
-                NOTICE_ACTION_TAP,
+                NOTICE_STRIP_ACTION_TAP,
               )}
             >
               <Icon name="sign-in" className="size-3.5" />
@@ -165,7 +165,7 @@ function AuthErrorBanner() {
               size="icon"
               variant="ghost"
               aria-label={t("connection.reload.aria")}
-              className={cn("size-6 text-muted-foreground", NOTICE_ACTION_TAP)}
+              className={cn("size-6 text-muted-foreground", NOTICE_STRIP_ACTION_TAP)}
               onClick={() => window.location.reload()}
             >
               <Icon name="refresh" className="size-3.5" />
@@ -342,7 +342,7 @@ function ConnectionStateBanner({
             <Button
               size="sm"
               // `whitespace-nowrap`: Retry is one word on one line, whatever the sentence beside it.
-              className={cn(NOTICE_ACTION, "whitespace-nowrap")}
+              className={cn(NOTICE_STRIP_ACTION, "whitespace-nowrap")}
               onClick={onRetry}
               disabled={retrying}
             >

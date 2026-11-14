@@ -71,4 +71,16 @@ describe("the top edge element", () => {
     expect(g).toMatch(/:root\s*\{\s*--top-edge-floor:\s*0px;\s*\}/);
     expect(g).toMatch(/@media \(min-width: 768px\)\s*\{\s*:root\s*\{\s*--top-edge-floor:\s*6px;/);
   });
+
+  it("pads the header by the strip's own height, so the strip covers the padding and never the row", () => {
+    function terms(expression: string): string[] {
+      return [...expression.replace(/\s/g, "").matchAll(/env\(safe-area-inset-top|var\(--top-edge-floor/g)].map((m) => m[0]);
+    }
+    const rule = ruleAfter('[data-slot="top-edge"] {', css.indexOf("@supports (-webkit-touch-callout: none)", css.indexOf('[data-slot="top-edge"] {')));
+    const strip = /height:\s*max\(([^;]+)\);/.exec(rule)?.[1] ?? "";
+    const padding = /\[padding-top:max\(([^\]]+)\)\]/.exec(header)?.[1] ?? "";
+    expect(terms(padding)).toEqual(["env(safe-area-inset-top", "var(--top-edge-floor"]);
+    expect(terms(padding)).toEqual(terms(strip));
+    expect(padding).toContain("var(--top-edge-floor,0px)");
+  });
 });

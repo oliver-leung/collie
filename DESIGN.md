@@ -587,24 +587,34 @@ visible to be hit. Two measured numbers hold it together, both documented at the
 change the scroller's padding or the pill's border and you must re-measure.
 
 **The one exception: the pane header's two lines (1.17.0).** The name line opens Pane
-settings and the workspace line opens the space, so the 60px row holds two targets, each
-30px tall and as wide as the identity block. Two 44px targets do not fit in one 60px row.
+settings and the workspace line opens the space, so the 52px row holds two targets, each
+26px tall and as wide as the identity block. Two 44px targets do not fit in one 52px row.
 The two buttons are not drawn over their lines and use no pseudo-element. They are empty
 siblings that together fill a layer laid over the identity block (`pane-identity-taps` in
 `agent-chat.tsx`), split at the line boundary, each as wide as the block. The layer reaches
-8px past the block top and bottom (`-inset-y-2`), which is air the row already owns, so the
-two targets are 30px tall each, half the 60px row, and a thumb a little above or below its
-line still lands on one. The lines paint above the layer with `pointer-events-none` and pass
-their taps through. The one pseudo-element in the header is the cache reading's: it reaches
-16px down from its 12px line (`pane-meta.tsx`), a `STRIP_TAP_TARGET`-style reach, and takes
-its own taps back. Do not copy any of this for a new control: a single target in a row still
-owes the full 44px.
+4px past the block top and bottom (`-inset-y-1`), which is the row's own `py-1` padding, so
+the two targets are 26px tall each, half the 52px row, and a thumb a little above or below
+its line still lands on one. The lines paint above the layer with `pointer-events-none` and
+pass their taps through. The one pseudo-element in the header is the cache reading's: it
+starts 4px above the chip and is 24px tall (`pane-meta.tsx`), a `STRIP_TAP_TARGET`-style
+reach that ends on the row's bottom edge, 2px clear of the name's target, and takes its own
+taps back. It is measured from the chip's top, which the 12px glyph sets, and never from its
+bottom, which moves with the face's descent. Do not copy any of this for a new control: a
+single target in a row still owes the full 44px.
 
-**A row states its own floor with `min-h`, never `h`.** `app-header.tsx:212` is
-`min-h-15` — 60px. It is a floor, not a sum: the row's own padding is `py-1`, and the
-floor stands above whatever the content needs so the row cannot shrink when a route
-passes less. The pane's stacked identity block and the dashboard's single 44px gear
-both land at 60px, which is the point — the header does not resize as you navigate.
+**A strip in the band reaches down, never up.** The band hangs from the header's bottom
+edge, and the header's 44px controls end 5px above that edge (the row's `py-1` and the
+rule). So a strip's actions buy their 44px from the band's own top edge downward:
+`NOTICE_STRIP_ACTION` in `ui/notice.tsx` for a button, and the strip's ✕ and whole-surface
+tap the same way. Each target ends 11px below a one-line strip, and none covers a header
+control. `e2e/header-height.spec.ts` taps the bottom of every header control with a strip
+open.
+
+**A row states its own floor with `min-h`, never `h`.** `app-header.tsx:387` is
+`min-h-13` — 52px, the 44px tap target plus the row's own `py-1` above and below it. It is
+a floor, not a sum of the children: the row cannot shrink when a route passes less. The
+pane's stacked identity block and the dashboard's single 44px gear both land at 52px, which
+is the point — the header does not resize as you navigate.
 
 Why state it at all: this row used to have no height of its own, so it took the height of
 its tallest *child* — and the children are props. On the dashboard the tallest was the 44px
@@ -720,7 +730,8 @@ gets a halo in the old ground — subtle enough to survive a screenshot review.
 
 **It was verified to fail in both directions**, which is what makes it a test rather than a
 comment. The same file couples the mark's tap box to the gear's (`size-11`, one number read
-off both) and asserts the header row is `min-h-15` and carries no `h-<n>`.
+off both), derives the header row's `min-h-13` from that 44px box plus the row's `py-1` on
+each side, and asserts the row carries no `h-<n>`.
 
 Reach for this whenever a rule lives in two places. Cheaper than an ADR, and it does not rot.
 
@@ -950,7 +961,7 @@ has to exist *before* its content changes to be announced reliably.
 `min-h-[33px]` for a strip, `min-h-[42px]` for a box, stated once in `ui/notice.tsx` and not
 lowerable by a caller. Both are derived, not picked: the 24px action slot plus the shape's own
 padding plus its border, which `border-box` counts inside a min-height. `min-h` and never `h`, for
-the reason §6 gives at `app-header.tsx:212`. They are **floors** — a two-line host-stale message
+the reason §6 gives at `app-header.tsx:387`. They are **floors** — a two-line host-stale message
 legitimately grows its box — and what they buy is that two one-line notices are the same height
 whether or not one carries a button, so swapping one strip for another inside the open band
 repaints it and never moves it.

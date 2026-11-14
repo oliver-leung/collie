@@ -102,7 +102,7 @@ describe("the row's shape", () => {
     expect(row().className).toMatch(/(?:^|\s)h-3(?=\s|$)/);
   });
 
-  it("reaches a tap box without drawing one, hanging down only, when the surface opens the rule", async () => {
+  it("reaches a tap box without drawing one, 4px up and 24px tall, when the surface opens the rule", async () => {
     const user = userEvent.setup();
     const onOpenCache = vi.fn();
     render(<PaneMeta host={undefined} cache={reading()} onOpenCache={onOpenCache} />, {
@@ -110,10 +110,10 @@ describe("the row's shape", () => {
     });
     const chip = document.querySelector<HTMLElement>('[data-slot="cache-chip"]')!;
     expect(chip.tagName).toBe("BUTTON");
-    // 2px above and 16px below the 12px line. Never 16px above: the pane name's button ends 4px over
-    // this line, and the reach used to cut into it (e2e/pane-header-taps.spec.ts measures the hit).
-    expect(chip.className).toMatch(/before:-top-0\.5/);
-    expect(chip.className).toMatch(/before:-bottom-4/);
+    // Never 16px above (e2e/pane-header-taps.spec.ts measures the hit).
+    expect(chip.className).toMatch(/before:-top-1(?=\s|$)/);
+    expect(chip.className).toMatch(/before:h-6(?=\s|$)/);
+    expect(chip.className).not.toMatch(/before:-?bottom-/);
     expect(chip.className).not.toMatch(/before:-inset-y-4/);
     await user.click(chip);
     expect(onOpenCache).toHaveBeenCalledTimes(1);

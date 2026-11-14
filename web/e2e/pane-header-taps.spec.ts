@@ -10,8 +10,8 @@ import { keepPhoneLayout } from "./fixtures/layout";
 // the workspace line opens the space, and the cache reading (a 12px chip) opens its sheet from a box
 // that is only reached, never drawn: `before:` pseudo-element around the chip. That reach used to run
 // 16px UP as well as down, over the lower half of the name line, so a tap there opened the cache
-// sheet instead of Pane settings (1.17.0 review). The reach now hangs DOWN only. jsdom lays nothing
-// out, so each probe here is `elementFromPoint`.
+// sheet instead of Pane settings (1.17.0 review). jsdom lays nothing out, so each probe here is
+// `elementFromPoint`.
 
 test.use({ serviceWorkers: "block" });
 
@@ -48,8 +48,8 @@ test("a tap in the lower half of the pane name reaches Pane settings, not the ca
   const cache = page.locator('[data-slot="cache-chip"]');
   await expect(cache).toBeVisible();
   const name = page.locator('[data-slot="pane-name"]');
-  // The name's tap target is the upper half of the header's layer (30px of the 60px row), not just
-  // its text: the cache reach used to cut into its lower 10px.
+  // The name's tap target is the upper half of the header's layer, not just its text: the cache
+  // reach used to cut into its lower 10px.
   const nameButton = page.locator('[data-slot="pane-identity-name"]');
   const nameBox = (await nameButton.boundingBox())!;
   const cacheBox = (await cache.boundingBox())!;
@@ -64,7 +64,21 @@ test("a tap in the lower half of the pane name reaches Pane settings, not the ca
   // And the chip itself, and the strip of reach under it, still open the cache sheet.
   const chipLabel = (await cache.getAttribute("aria-label"))!;
   expect(await buttonAt(page, x, cacheBox.y + cacheBox.height / 2)).toBe(chipLabel);
-  expect(await buttonAt(page, x, cacheBox.y + cacheBox.height + 10)).toBe(chipLabel);
+  expect(await buttonAt(page, x, cacheBox.y + cacheBox.height + 4)).toBe(chipLabel);
+});
+
+test("the cache reach runs to the header row's bottom edge and stops inside the header", async ({ page }) => {
+  await page.goto(`/pane/${encodeURIComponent("w2:p1")}`);
+  const cache = page.locator('[data-slot="cache-chip"]');
+  await expect(cache).toBeVisible();
+  const cacheBox = (await cache.boundingBox())!;
+  const row = (await page.locator('[data-slot="header-row"]').boundingBox())!;
+  const header = (await page.getByRole("banner").boundingBox())!;
+  const chipLabel = (await cache.getAttribute("aria-label"))!;
+  const x = cacheBox.x + cacheBox.width / 2;
+
+  expect(await buttonAt(page, x, row.y + row.height - 1)).toBe(chipLabel);
+  expect(await buttonAt(page, x, header.y + header.height)).not.toBe(chipLabel);
 });
 
 test("a tap on the workspace line reaches the workspace link", async ({ page }) => {

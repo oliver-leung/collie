@@ -193,6 +193,27 @@ test("with no inset the tab row and the sidebar foot keep the height they always
   expect((await page.locator('[data-slot="sidebar-foot"]').boundingBox())!.height).toBe(53);
 });
 
+test("a column without focus starts its body on the line where the focused column's header ends", async ({ page }) => {
+  const beside = Object.assign({}, fixtureSnapshot.agents[1], { paneId: "w2:p3", paneLabel: "beside", focused: false, status: "idle" });
+  await page.route("**/api/snapshot", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify({ ...fixtureSnapshot, agents: [...fixtureSnapshot.agents, beside] }) }),
+  );
+  await page.goto(`/pane/${encodeURIComponent("w2:p1")}`);
+  const sidebar = page.getByRole("complementary", { name: en["wide.sidebar.label"] });
+  await sidebar.getByRole("button", { name: /beside/u }).click({ button: "right" });
+  await page.getByRole("button", { name: en["wide.openBeside"], exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/pane/${encodeURIComponent("w2:p3")}$`, "u"));
+
+  const unfocused = page.locator('[data-slot="wide-layout"] [data-slot="column-header"]');
+  const focused = page.locator('[data-slot="wide-layout"] [data-slot="column-head"] header');
+  await expect(unfocused).toHaveCount(1);
+  await expect(focused).toBeVisible();
+  const a = (await unfocused.boundingBox())!;
+  const b = (await focused.boundingBox())!;
+  expect(a.y).toBeCloseTo(b.y, 1);
+  expect(a.y + a.height).toBeCloseTo(b.y + b.height, 1);
+});
+
 // THE PAGE ITSELF NEVER SCROLLS (1.27.1, round two). An absolute mark in a sidebar row (a dot's ring,
 // a badge) with no positioned box between it and the page had the page as its containing block. Far
 // down a long list it escaped the list's scroller and the app's `overflow-hidden` root and made the

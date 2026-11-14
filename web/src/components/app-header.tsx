@@ -69,14 +69,14 @@ interface HeaderClaim {
    *  mounted below it. The element itself STAYS, with its reserved rule and with whatever safe-area
    *  inset it is currently holding (see the class list); the
    *  row inside it leaves through `Collapse` — DESIGN.md §1's only sanctioned way an in-flow surface
-   *  arrives or leaves, and §2's reason for not tearing 60px out of the top of the page in one frame.
+   *  arrives or leaves.
    *  Keeping the inset is deliberate: the notch is not screen a mirror could use anyway, and a route
    *  that took the inset over would double it against the header's own the moment the row came back. */
   hidden: boolean;
 }
 
 // What a route gets when no route has claimed the row: the bare shell. This is the FORGOT case, and
-// it is deliberately benign rather than empty — the mark, the strip, the rule and the 60px floor are
+// it is deliberately benign rather than empty — the mark, the strip, the rule and the floor are
 // all the shell's own, so a route that renders no <RouteHeader/> at all still gets a real header of
 // the right height. The one thing it cannot get wrong is the thing the operator was looking at.
 const UNCLAIMED: HeaderClaim = { wordmark: false, width: "full", override: false, hidden: false };
@@ -355,7 +355,7 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
            * well pushed the pane's title down by the inset while those rows sat under the status bar
            * (a foldable's screen recording, 1.27.1).
            */
-          dockedRow === null && "[padding-top:env(safe-area-inset-top)]",
+          dockedRow === null && "[padding-top:max(env(safe-area-inset-top),var(--top-edge-floor,0px))]",
           // The rule is RECOLOURED, never removed — DESIGN.md §2's own technique, and the width stays
           // reserved in the base string above. While a route has the row hidden (zen) there are no
           // two regions left to cut apart, so the edge goes transparent; nothing moves by a pixel
@@ -369,14 +369,13 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
       >
         {/* The row and the prerelease strip leave TOGETHER, and through `Collapse` — DESIGN.md §1's
             only sanctioned way an in-flow surface arrives or leaves, which is what makes "hide the
-            chrome" a 240ms slide instead of 60px vanishing between two frames. `Collapse` unmounts at
+            chrome" a 240ms slide. `Collapse` unmounts at
             the end of its exit, so the mark, the route's ⋮ and its breadcrumb leave the tab order
             with the pixels: the portal HOSTS live in here, so a route portalling into them simply
             finds no target and renders nothing. */}
         <Collapse open={!claim.hidden}>
           <AlphaBar />
-          {/* The row has a FLOOR, not a fixed height: `min-h-15` (60px) = the 44px tap target every
-              icon control in here is built to + this row's own `py-2`. Before it, the row simply took
+          {/* The row has a FLOOR, not a fixed height. Before it, the row simply took
               the height of the tallest thing a caller happened to pass, so the header was 60px on the
               dashboard (the 44px SettingsGear) and 56px inside a pane (no gear, so the 40px mark was
               tallest) — a 4px jump on every dashboard→pane navigation. A row whose height is decided by
@@ -384,27 +383,8 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
               `min-h` rather than `h`: a future child taller than 44px still GROWS the row instead of
               being clipped or overflowing it — the header would get taller (on every route at once,
               because they all mount this row), which is a visible design decision rather than a silent
-              overlap.
-
-              `py-1`, not `py-2` — and the 4px it gives back is not a saving, it is a RELOCATION. The
-              pane's identity block is three lines now (caption / name / cwd), and with 8px of outer
-              padding it had one leftover pixel to divide between them: measured, 8px above the block
-              against a 1px gap between its lines, an 8 : 1 ratio where the two-line block had been 5 : 1.
-              The line count rose 50% and the air between the lines halved, which is why fewer items did
-              not produce a calmer row — it reads as one grey paragraph rather than three lines. At `py-1`
-              the content box is 52px and the block spends it 12 / 4 / 20 / 4 / 12, so outer air and inner
-              air are both 4px and the row still measures exactly 60px on every route. Nothing moves and
-              nothing is clipped. What it gives up is the 8px of breathing room a future taller-than-44px
-              child would have got; it gets 4.
-
-              SINCE THEN the pane's block lost its caption line — the status word moved down to the
-              composer's status strip — so it is TWO lines and 36px, not three and 52px. `py-1` is
-              therefore no longer load-bearing here: 36px of lines centred inside a 60px floor leaves
-              12px of air above and below whether this padding is 4px or 8px, measured both ways. So
-              `py-2` would now read identically and would hand a future taller-than-44px child its 8px
-              back. That is a PROPOSAL, not a change — the number is left exactly where it was measured,
-              one variable at a time. */}
-          <div data-slot="header-row" className="flex min-h-15 items-center gap-2 pl-4 pr-2 py-1">
+              overlap. */}
+          <div data-slot="header-row" className="flex min-h-13 items-center gap-2 pl-4 pr-2 py-1">
             {!claim.override && (
               <>
                 {/* The mark is the shell's, not a slot — which is now literal rather than a promise: it
@@ -452,14 +432,10 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
                     centre, shared with every chip. The alignment holds by construction, not by a
                     compensating offset that would drift the next time a size changes.
 
-                    THE ROW'S HEIGHT STILL DOES NOT MOVE (DESIGN.md §2, §6). The row is `min-h-15`
-                    (60px) with `py-1`, a 52px content box, and its tallest child is the mark's 44px
-                    tap box — this block now contributes 24px, less than before, so nothing grows.
-                    The eyebrow is 11px at `leading-none` (the arbitrary size would otherwise take
-                    the body's 1.5 and draw 16.5px): from the block's top at 18px it reaches up to
-                    7px from the row's top edge, inside the row's own box with the top padding to
-                    spare. The mux logo changes none of it: 1.15em on a -0.2em baseline shift stays inside the
-                    line box the type already asked for.
+                    THE ROW'S HEIGHT STILL DOES NOT MOVE (DESIGN.md §2, §6). The eyebrow is 11px at
+                    `leading-none` (the arbitrary size would otherwise take the body's 1.5 and draw
+                    16.5px). The mux logo changes none of it: 1.15em on a -0.2em baseline shift stays
+                    inside the line box the type already asked for.
 
                     IT IS MOUNTED ONCE AND HIDDEN off the wordmark routes, rather than rendered
                     conditionally. It shows where the claim asks for it (dashboard + space, never the

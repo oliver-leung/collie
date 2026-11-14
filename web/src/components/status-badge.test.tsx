@@ -207,9 +207,6 @@ describe("StatusWord — the caption's plain-language state", () => {
     // was written that way first, rendered at a 15px line, and grew the pane header from 60px to
     // 63px on the pane route alone. `text-[10px]/3` is one token and cannot be split, so no later
     // utility in the same cn() can take the line height without also taking the size.
-    //
-    // The header's whole three-line budget — 12 / 4 / 20 / 4 / 12 = 52px inside a 52px content box —
-    // rests on this line being 12.
     const cls = render(<StatusWord status="idle" />).container.firstElementChild?.className ?? "";
     expect(cls).toContain("text-[10px]/3");
     expect(cls).not.toMatch(/(^|\s)leading-/);

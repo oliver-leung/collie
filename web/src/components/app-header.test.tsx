@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider, useLocation } from "react-router";
@@ -131,7 +131,7 @@ describe("the header — the one shared shell", () => {
     );
     const rowOf = (c: HTMLElement) => c.querySelector('header [data-slot="header-row"]')?.className ?? "";
     // min-h, not h: a child taller than the floor must still grow the row rather than be clipped.
-    expect(rowOf(dash.container)).toContain("min-h-15");
+    expect(rowOf(dash.container)).toContain("min-h-13");
     expect(rowOf(dash.container)).not.toMatch(/(^|\s)h-\d/);
     // Same row, whatever the caller handed in — the geometry is the shell's, not the route's.
     expect(rowOf(pane.container)).toBe(rowOf(dash.container));
@@ -151,6 +151,25 @@ describe("the header — the one shared shell", () => {
     const gear = screen.getByRole("button", { name: "Settings" });
     expect(size(markBox)).toBe("11"); // 44px
     expect(size(markBox)).toBe(size(gear));
+  });
+
+  it("derives the row's floor from the 44px tap box plus the row's own padding above and below it", () => {
+    const { container } = renderHeader(
+      <Header bridge="connected" error={false} wordmark rightTrail={<SettingsGear />} />,
+    );
+    function step(el: Element | null | undefined, utility: string): number {
+      const n = new RegExp(`(?:^|\\s)${utility}-(\\d+(?:\\.\\d+)?)(?=\\s|$)`).exec(el?.className ?? "")?.[1];
+      expect(n, `${utility}-<n> in "${el?.className ?? ""}"`).toBeDefined();
+      return Number(n) * 4;
+    }
+    const row = container.querySelector('header [data-slot="header-row"]');
+    const markBox = container.querySelector('[data-slot="collie-mark"]');
+    const gear = within(container).getByRole("button", { name: "Settings" });
+    const tap = step(markBox, "size");
+    expect(step(gear, "size")).toBe(tap);
+    expect(tap).toBe(44);
+    expect(step(row, "min-h")).toBe(tap + 2 * step(row, "py"));
+    expect(step(row, "min-h")).toBe(52);
   });
 
   it("returns to the dashboard via onHome when the Collie mark is tapped", async () => {
@@ -512,20 +531,18 @@ describe("the header — the stacked identity", () => {
     // notch is always its own. There is no handover left to animate: no padding transition.
     const { container } = renderHeader(<Header bridge="connected" error={false} wordmark />);
     const header = container.querySelector("header");
-    expect(header?.className).toContain("[padding-top:env(safe-area-inset-top)]");
+    expect(header?.className).toContain("[padding-top:max(env(safe-area-inset-top),var(--top-edge-floor,0px))]");
     expect(header?.className).not.toMatch(/transition-\[padding-top\]/);
   });
 
   // THE HEIGHT CONTRACT, which the stack had to fit inside rather than grow (DESIGN.md §2, §6).
-  // The row is `min-h-15` — 60px — with `py-1`, so its content box is 52px and its tallest child is
-  // the mark's 44px tap box. The block contributes only the mux line — `text-base`, 16px on a 24px
-  // line box — because the brand is out of flow; the brand is an arbitrary 11px at `leading-none`
-  // (the inherited 1.5 would draw 16.5px and put its top 5.5px higher, past the row's top padding).
-  // From the centred block's top at 18px, 11px of eyebrow reaches to 7px from the row's edge —
-  // inside the box. jsdom lays nothing out, so what is asserted is the sizes that arithmetic is
-  // made of: raise either tier or drop `leading-none` and this fails, which is the point — the
-  // numbers have to be re-measured before the row is allowed to change.
-  it("spends the two lines inside the row's existing 60px floor", async () => {
+  // The block contributes only the mux line — `text-base`, 16px on a 24px line box — because the
+  // brand is out of flow; the brand is an arbitrary 11px at `leading-none` (the inherited 1.5 would
+  // draw 16.5px and put its top 5.5px higher, past the row's top padding). jsdom lays nothing out,
+  // so what is asserted is the sizes that arithmetic is made of: raise either tier or drop
+  // `leading-none` and this fails, which is the point — the numbers have to be re-measured before
+  // the row is allowed to change.
+  it("spends the two lines inside the row's 52px floor", async () => {
     server.use(
       http.get("/api/config", () =>
         HttpResponse.json({
@@ -545,7 +562,7 @@ describe("the header — the stacked identity", () => {
     expect(brand?.className).toContain("leading-none"); // …on an 11px line box, not 16.5px
     expect(muxLine?.className).toContain("text-base"); // 24px line box — the block's whole height
     const row = container.querySelector('header [data-slot="header-row"]');
-    expect(row?.className).toContain("min-h-15");
+    expect(row?.className).toContain("min-h-13");
     expect(row?.className).not.toMatch(/(^|\s)h-\d/);
   });
 
@@ -717,15 +734,14 @@ describe("the ONE header — hoisted above the outlet", () => {
   });
 
   it("keeps the row's height recipe byte-identical across a navigation", async () => {
-    // jsdom lays nothing out, so "60px" is not measurable here — what IS measurable is that the row
-    // is the same element carrying the same class string on every route, which is the property the
-    // pixels follow from. (The pixels were measured in a browser: 79.75px of header, dashboard and
-    // pane alike, before and after this change.) The floor itself is asserted above, in "states the
-    // row's own height instead of inheriting it from whatever a caller passed".
+    // jsdom lays nothing out — what IS measurable is that the row is the same element carrying the
+    // same class string on every route, which is the property the pixels follow from. The floor
+    // itself is asserted above, in "states the row's own height instead of inheriting it from
+    // whatever a caller passed".
     const { container, go } = renderHoisted();
     const row = container.querySelector<HTMLElement>('[data-slot="header-row"]');
     const recipe = row?.className ?? "";
-    expect(recipe).toContain("min-h-15");
+    expect(recipe).toContain("min-h-13");
     expect(recipe).not.toMatch(/(^|\s)h-\d/);
     for (const to of ["/pane", "/settings", "/"]) {
       await go(to);

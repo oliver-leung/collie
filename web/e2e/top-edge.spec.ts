@@ -8,7 +8,7 @@ import { installApiStub } from "./fixtures/api";
 // prove, in WebKit and Chromium at phone and tablet width: with the standalone gate lifted from the
 // SHIPPED stylesheet (read back through the CSSOM, so a rule that moves or breaks fails here), the
 // element is a real, fixed, full-width, opaque box at y=0 in the header's own colour, as tall as the
-// floor (the inset is 0 in a browser), never in the way of a tap, and it moves nothing.
+// floor (the inset is 0 in a browser), never in the way of a tap.
 
 // NO SERVICE WORKER: `page.route` cannot see a request the worker makes (see composer-clear.spec.ts).
 test.use({ serviceWorkers: "block" });
@@ -54,7 +54,8 @@ test("outside a Home Screen app the element draws nothing", async ({ page }) => 
 test("with the gate lifted it is a fixed, opaque, full-width strip at the top in the header colour", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("banner")).toBeVisible();
-  const before = await page.getByRole("banner").boundingBox();
+  const before = (await page.getByRole("banner").boundingBox())!;
+  const rowBefore = (await page.locator('[data-slot="header-row"]').boundingBox())!;
   await liftGate(page);
 
   const m = await page.evaluate(() => {
@@ -90,7 +91,11 @@ test("with the gate lifted it is a fixed, opaque, full-width strip at the top in
   // No inset in a browser: a phone gets no floor, a tablet gets the smallest height WebKit accepts.
   expect(m.height).toBe(m.innerWidth >= 768 ? 6 : 0);
 
-  // It moves nothing: the banner sits where it sat.
-  const after = await page.getByRole("banner").boundingBox();
-  expect(after).toEqual(before);
+  const after = (await page.getByRole("banner").boundingBox())!;
+  const rowAfter = (await page.locator('[data-slot="header-row"]').boundingBox())!;
+  expect({ x: after.x, width: after.width }).toEqual({ x: before.x, width: before.width });
+  expect(after.y).toBe(before.y);
+  expect(after.height).toBeCloseTo(before.height + m.height, 2);
+  expect(rowAfter.y).toBeCloseTo(rowBefore.y + m.height, 2);
+  expect(rowAfter.y).toBeGreaterThanOrEqual(m.y + m.height);
 });

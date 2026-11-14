@@ -130,9 +130,8 @@ const TONE = {
  *     each way measures 42 — the floor missed by 2px, invisibly. 11px reaches a true 44. A control
  *     that is NOT a Button (no reserved border) reaches 46 here, which is fine; under is not.
  *  3. **An ancestor with `overflow: hidden` eats the extension**, taps and all, with nothing to
- *     see. That is why `ui/collapse.tsx` drops its clip once it has finished opening: the strip
- *     band is 33px and the reach is 11px, so every pixel of this target is outside the collapsed
- *     box it animates inside of.
+ *     see. That is why `ui/collapse.tsx` drops its clip once it has finished opening: every pixel
+ *     of this target is outside the collapsed box it animates inside of.
  *
  * The tap floor is not negotiable, and the strip's floor is derived FROM this button — the strip
  * accommodates the target, never the other way round.
@@ -140,12 +139,19 @@ const TONE = {
 export const NOTICE_ACTION_TAP =
   "relative before:absolute before:inset-x-0 before:-inset-y-[11px] before:content-['']";
 
+export const NOTICE_STRIP_ACTION_TAP =
+  "relative before:absolute before:inset-x-0 before:-top-[5px] before:-bottom-[17px] before:content-['']";
+
 /**
  * The clothes for an action button inside a Notice: 24px tall, small type, and the tap target
  * above. Pass it as `className` to `ui/button.tsx` — `<Button size="sm" className={NOTICE_ACTION}>`.
  * It lives here rather than at the call sites because the 24px is the strip floor's derivation.
  */
 export const NOTICE_ACTION = `h-6 gap-1 px-2 text-xs ${NOTICE_ACTION_TAP}`;
+
+export const NOTICE_STRIP_ACTION = `h-6 gap-1 px-2 text-xs ${NOTICE_STRIP_ACTION_TAP}`;
+
+const STRIP_DISMISS_TAP = "relative before:absolute before:-top-1 before:-bottom-4 before:content-['']";
 
 /**
  * A strip is a full-bleed one-liner of viewport chrome, and it NEVER wraps — by contract, not by
@@ -312,7 +318,7 @@ export function Notice({
               // nothing sits to its right (the same condition STRIP_TAP_TARGET_SQUARE states).
               className={cn(
                 "flex size-6 items-center justify-center rounded-sm opacity-70 hover:opacity-100",
-                NOTICE_ACTION_TAP,
+                strip ? STRIP_DISMISS_TAP : NOTICE_ACTION_TAP,
                 "before:-inset-x-[11px]",
               )}
             >
@@ -340,14 +346,12 @@ export function Notice({
         // anywhere else on the row can reach. `aria-labelledby` names it from the same text the body
         // renders — the FULL string, since `truncate` only clips paint, never the text node itself, so
         // the accessible name is never shorter than what a sighted reader would get by widening the
-        // window. `-inset-y-[5.5px]` buys the 44px tap floor from the 33px strip without growing it
-        // (the box's own layout is untouched — same technique as `NOTICE_ACTION_TAP` above, just
-        // vertical-only because this target is already `w-full`).
+        // window.
         <button
           type="button"
           onClick={onActivate}
           aria-labelledby={bodyId}
-          className="absolute inset-x-0 -inset-y-[5.5px] rounded-[inherit] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          className="absolute inset-x-0 top-0 -bottom-3 rounded-[inherit] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
         />
       ) : null}
       {inner}

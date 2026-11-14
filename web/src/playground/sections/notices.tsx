@@ -11,7 +11,7 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 
 import { AppHeaderHost, RouteHeader, SettingsGear } from "@/components/app-header";
 import { Button } from "@/components/ui/button";
-import { Notice, NOTICE_ACTION, type NoticeTone, type NoticeVariant } from "@/components/ui/notice";
+import { Notice, NOTICE_ACTION, NOTICE_STRIP_ACTION, type NoticeTone, type NoticeVariant } from "@/components/ui/notice";
 import { StripHost, StripSlot } from "@/components/ui/strip-host";
 import { AUTH, OUTAGE, DEGRADED, UPDATE } from "@/lib/strip-priority";
 import { ConnectionBanner } from "@/components/connection-banner";
@@ -110,7 +110,7 @@ function NoticeSample({
         tone={tone}
         variant={variant}
         action={
-          <Button size="sm" className={NOTICE_ACTION}>
+          <Button size="sm" className={variant === "strip" ? NOTICE_STRIP_ACTION : NOTICE_ACTION}>
             Retry
           </Button>
         }

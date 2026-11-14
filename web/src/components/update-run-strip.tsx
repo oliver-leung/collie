@@ -1,7 +1,7 @@
 import { Icon } from "@/components/icons/icon";
 
 import { Button } from "@/components/ui/button";
-import { NOTICE_ACTION, Notice } from "@/components/ui/notice";
+import { NOTICE_STRIP_ACTION, Notice } from "@/components/ui/notice";
 import { StripSlot } from "@/components/ui/strip-host";
 import { UPDATE_RUN } from "@/lib/strip-priority";
 import { useLocale } from "@/hooks/use-locale";
@@ -52,7 +52,7 @@ export function UpdateRunStrip({ screen }: { screen: UpdateScreenState }) {
         announce="status"
         icon={<Icon name="busy" className="motion-safe:animate-spin" />}
         action={
-          <Button size="sm" variant="ghost" className={NOTICE_ACTION} onClick={() => screen.setExpanded(true)}>
+          <Button size="sm" variant="ghost" className={NOTICE_STRIP_ACTION} onClick={() => screen.setExpanded(true)}>
             {t("updateScreen.strip.view")}
           </Button>
         }

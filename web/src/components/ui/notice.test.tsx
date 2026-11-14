@@ -1,10 +1,11 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { Notice, NOTICE_ACTION, NOTICE_ACTION_TAP } from "./notice";
+import { Button } from "./button";
+import { Notice, NOTICE_ACTION, NOTICE_ACTION_TAP, NOTICE_STRIP_ACTION, NOTICE_STRIP_ACTION_TAP } from "./notice";
 
 const TONES = ["info", "caution", "danger", "success", "neutral"] as const;
 
@@ -311,6 +312,51 @@ describe("Notice — the one notice surface", () => {
     expect(NOTICE_ACTION_TAP).toContain("before:-inset-y-[11px]");
     // Vertical only: the band stays 33px and the reach never fattens it.
     expect(NOTICE_ACTION_TAP).toContain("before:inset-x-0");
+  });
+
+  it("buys a strip's 44px from the strip's own top edge down, so nothing in it reaches above the band", () => {
+    function px(cls: string, utility: string): number {
+      const match = new RegExp(`(?:^|\\s)${utility}-(?:\\[(\\d+)px\\]|(\\d+))(?=\\s|$)`).exec(cls);
+      expect(match, `${utility}-<n> in "${cls}"`).not.toBeNull();
+      return match?.[1] === undefined ? Number(match?.[2]) * 4 : Number(match[1]);
+    }
+    const { container } = render(
+      <Notice tone="danger" variant="strip" onActivate={() => {}} onDismiss={() => {}} dismissLabel="Dismiss">
+        Bridge unreachable
+      </Notice>,
+    );
+    const strip = container.querySelector<HTMLElement>('[data-slot="notice"]')!;
+    const pad = px(strip.className, "py");
+    const stripBorder = 1;
+    expect(strip).toHaveClass("border-b");
+
+    const action = within(render(<Button size="sm" className={NOTICE_STRIP_ACTION}>Retry</Button>).container).getByRole("button");
+    const buttonBorder = 1;
+    expect(action).toHaveClass("border");
+    const up = px(NOTICE_STRIP_ACTION_TAP, "before:-top");
+    expect(NOTICE_STRIP_ACTION).toContain(NOTICE_STRIP_ACTION_TAP);
+    expect(up).toBe(pad + buttonBorder);
+    expect(px(action.className, "h") - 2 * buttonBorder + up + px(NOTICE_STRIP_ACTION_TAP, "before:-bottom")).toBe(44);
+
+    const dismiss = within(container).getByRole("button", { name: "Dismiss" });
+    expect(dismiss.className).not.toMatch(/(?:^|\s)border(?=\s|$)/);
+    expect(px(dismiss.className, "before:-top")).toBe(pad);
+    expect(px(dismiss.className, "size") + pad + px(dismiss.className, "before:-bottom")).toBe(44);
+
+    const whole = within(container).getByRole("button", { name: "Bridge unreachable" });
+    expect(px(whole.className, "top")).toBe(0);
+    expect(px(strip.className, "min-h") - stripBorder + px(whole.className, "-bottom")).toBe(44);
+  });
+
+  it("keeps a box's ✕ on the symmetric reach, since a box has no band above it to keep out of", () => {
+    const { container } = render(
+      <Notice tone="caution" variant="box" onDismiss={() => {}} dismissLabel="Dismiss">
+        copy
+      </Notice>,
+    );
+    const dismiss = within(container).getByRole("button", { name: "Dismiss" });
+    expect(dismiss.className).toContain("before:-inset-y-[11px]");
+    expect(dismiss.className).not.toMatch(/before:-(?:top|bottom)-/);
   });
 });
 

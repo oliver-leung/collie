@@ -110,7 +110,7 @@ export function ColumnControls({
 }
 
 /**
- * The header of a column WITHOUT focus. Same floor as the one header (`min-h-15`) so every column's
+ * The header of a column WITHOUT focus. Same floor as the one header so every column's
  * body starts on one line, and the name in muted ink: the focused column draws the pane's own header,
  * in normal ink. Colour only between the two, so nothing moves (DESIGN.md §2).
  */
@@ -118,7 +118,7 @@ export function ColumnHeader({ pane, controls, onFocus }: { pane: AgentView; con
   useLocale();
   const head = paneGitHead(pane);
   return (
-    <div data-slot="column-header" className="flex min-h-15 shrink-0 items-center gap-1 border-b border-band-rule bg-band-ground py-1 pl-4 pr-2">
+    <div data-slot="column-header" className="flex min-h-13 shrink-0 items-center gap-1 border-b border-band-rule bg-band-ground py-1 pl-4 pr-2">
       <PaneGlyph pane={pane} className="size-8" markOn="bg-band-ground" named />
       {/* The name is the column's way in for a keyboard: Enter on it gives the column the focus. */}
       <button type="button" onClick={own(onFocus)} className="min-h-11 min-w-0 flex-1 pl-2 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">

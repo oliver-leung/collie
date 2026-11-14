@@ -2327,10 +2327,9 @@ export function AgentChat({
           // (DESIGN.md §2).
           //
           // IT STILL COSTS THE ROW NOTHING. Altan, on the header before all this: the cache button
-          // and the host name "are super ugly and increasing header row height". They were, at 69px
-          // against a 44px identity block, which pushed the row off its `min-h-15` floor (60px,
-          // app-header.tsx) to 77px. The only thing here now is the 44px menu, under the floor, so
-          // the floor is what sets the height and nothing in this corner can raise it.
+          // and the host name "are super ugly and increasing header row height". The only thing here
+          // now is the 44px menu, under the floor, so the floor is what sets the height and nothing in
+          // this corner can raise it.
           //
           // RIGHT EDGES. `pr-3` is the line the corner lands on: the menu column's own edge. The
           // meta on the path line ends where this column begins, because it lives in the row's centre
@@ -2378,9 +2377,7 @@ export function AgentChat({
             // states the floor for everything else. `min-h-11` is 44px and the button, covering this
             // box, is exactly as tall. With the caption line gone the lines are 36px (name 20 + gap 4
             // + meta line 12), so the floor catches every case rather than only the short one. No
-            // vertical padding on top of it, for the reason it never had any: lines plus padding must
-            // stay inside the row's 52px content box or the header grows on the pane route alone —
-            // the route-local growth `min-h-15` exists to prevent.
+            // vertical padding on top of it.
             <div
               data-slot="pane-identity-block"
               // The pane pair's destination (lib/glide.ts): a dashboard or space row's dot, tile and
@@ -2393,11 +2390,8 @@ export function AgentChat({
               {/* THE TAP SURFACE IS TWO BUTTONS, one per line (1.17.0): the name line opens Pane
                   settings, the place line opens the space. They are siblings that together fill a
                   layer laid over the block, split at the line boundary, and each spans the block's
-                  full width. The layer reaches 8px past the block top and bottom (`-inset-y-2`),
-                  which is where the row's own 4px padding and the 4px of air the 44px block leaves
-                  around its 36px of lines already are, so the two targets are 30px tall each, half
-                  the 60px row, and nothing outside the row is covered. The lines paint above the
-                  layer and pass their taps through, as before; the cache reading takes its own back.
+                  full width. The lines paint above the layer and pass their taps through, as
+                  before; the cache reading takes its own back.
                   `data-slot="pane-identity"` stays on the place button, which keeps the overview
                   label and the status suffix a screen reader needs. */}
               {/* A pane with no screen has neither target (durable-simple, 2026-10-13): its settings row is a
@@ -2405,7 +2399,7 @@ export function AgentChat({
                   bookkeeping, which the conversation list behind the back arrow already lays out. The lines
                   stay; the state is still named by the dot's own label. */}
               {!gridless && (
-              <div data-slot="pane-identity-taps" className="absolute inset-x-0 -inset-y-2 flex flex-col rounded-lg">
+              <div data-slot="pane-identity-taps" className="absolute inset-x-0 -inset-y-1 flex flex-col rounded-lg">
                 <button
                   type="button"
                   onClick={() => setDrawer("paneSettings")}
@@ -2436,8 +2430,7 @@ export function AgentChat({
                 />
               </div>
               )}
-              {/* TWO lines with 4px between them — see the row's own note in app-header.tsx for why
-                  the air moved from outside the block to inside it. Each line states its own height
+              {/* TWO lines with 4px between them. Each line states its own height
                   (20 / 12) so the block is a sum of boxes: as bare inline spans they inherit the
                   body's 1.45 strut and the block silently becomes taller than the row was measured
                   for.
@@ -2457,11 +2450,7 @@ export function AgentChat({
 
                   Since issue 420 that dot is also a SHAPE (a triangle for "needs you", a half-filled
                   circle for working, a disc, a ring), so the range no longer rests on hue alone; the
-                  word stays down on the strip, and the badge keeps its name.
-
-                  The row does not shrink for the missing line: `min-h-15` is a FLOOR (app-header.tsx),
-                  36px of lines centred in it still measures 60px, and that floor is shared by every
-                  route and must not be lowered to fit this one. */}
+                  word stays down on the strip, and the badge keeps its name. */}
               <div
                 data-slot="pane-lines"
                 // Above the tap surface, and transparent to it: `relative` puts these lines over the
